@@ -2,11 +2,16 @@
   "name": "tienda-regalos",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"tests/unit/**/*.test.ts\""
   },
   "dependencies": {
     "next": "16.4.0",
@@ -24,7 +29,4 @@
     "tailwindcss": "^4",
     "typescript": "^5"
   }
-
-
-
 }
