@@ -64,14 +64,19 @@ export function toErrorResponse(error: unknown, logger?: ErrorLogger): Response 
   }
   if (error instanceof DuplicateSkuError) {
     return Response.json(body(error.code, error.message), { status: 409 });
-  }
-  if (error instanceof ProductNotFoundError) {
+  }  if (error instanceof ProductNotFoundError) {
     return Response.json(body(error.code, error.message), { status: 404 });
   }
 
+  const cause = error instanceof Error ? error.cause : undefined;
   logger?.error('Error no controlado al procesar la petición de productos', {
     errorName: error instanceof Error ? error.name : typeof error,
     errorCode: error instanceof AppError ? error.code : undefined,
+    causeName: cause instanceof Error ? cause.name : undefined,
+    causeCode:
+      typeof cause === 'object' && cause !== null && 'code' in cause
+        ? String((cause as { code: unknown }).code)
+        : undefined,
   });
   return Response.json(body('INTERNAL_ERROR', 'Error interno del servidor'), { status: 500 });
 }
