@@ -1,27 +1,15 @@
-/**
- * Caso de uso: obtener un producto por su slug.
- *
- * Lo usa la tienda pública en /productos/[slug]. Devuelve el producto aunque no
- * esté disponible o su categoría esté inactiva; la página pública debe
- * responder 404 en esos casos (se implementa en la Fase 5), para que el panel
- * administrativo conserve acceso a todo.
- */
+import { ProductNotFoundError } from '../domain/errors';
+import type { Product } from '../domain/product';
+import type { ProductRepository } from '../domain/product-repository';
 
-import { NotFoundError } from "../../shared/domain/errors.ts";
-import type { Product } from "../domain/product.ts";
-import type { ProductRepository } from "../domain/product-repository.ts";
-
+/** Obtiene un producto por slug, esté o no disponible (uso administrativo). */
 export class GetProductBySlug {
-  private readonly products: ProductRepository;
+  constructor(private readonly products: ProductRepository) {}
 
-  constructor(deps: { products: ProductRepository }) {
-    this.products = deps.products;
-  }
-
-  /** @throws NotFoundError si el producto no existe. */
+  /** @throws ProductNotFoundError si no existe. */
   async execute(slug: string): Promise<Product> {
     const product = await this.products.findBySlug(slug);
-    if (!product) throw new NotFoundError("Producto", slug);
+    if (!product) throw new ProductNotFoundError();
     return product;
   }
 }

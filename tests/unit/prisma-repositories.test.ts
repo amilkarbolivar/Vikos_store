@@ -21,11 +21,13 @@ import {
   type CategoryRow,
 } from "../../src/modules/categories/infrastructure/category-repository-impl.ts";
 import {
-  PrismaProductRepository,
-  type ProductDelegate,
-  type ProductRow,
-  type ProductWhere,
-} from "../../src/modules/products/infrastructure/product-repository-impl.ts";
+  CategoryNotFoundError,
+  DuplicateSlugError,
+  ProductNotFoundError,
+} from "../../src/modules/products/domain/errors.ts";
+import { ProductRepositoryImpl } from "../../src/modules/products/infrastructure/product-repository-impl.ts";
+import type { PrismaClient } from "@prisma/client";
+
 import { ConflictError, NotFoundError } from "../../src/modules/shared/domain/errors.ts";
 
 const NOW = new Date("2026-01-01T00:00:00Z");
@@ -37,10 +39,6 @@ function prismaError(code: string): Error {
 
 const categoryRow: CategoryRow = {
   id: "c1", name: "Flores", slug: "flores", description: null, isActive: true, createdAt: NOW, updatedAt: NOW,
-};
-const productRow: ProductRow = {
-  id: "p1", name: "Rosas", slug: "rosas", description: "", priceInCents: 5_000_000, categoryId: "c1",
-  imageUrl: null, isAvailable: true, createdAt: NOW, updatedAt: NOW,
 };
 
 describe("getPrismaErrorCode", () => {
@@ -105,54 +103,74 @@ describe("PrismaCategoryRepository", () => {
   });
 });
 
-describe("PrismaProductRepository", () => {
-  function setup(overrides: Partial<ProductDelegate> = {}) {
-    const calls: { where?: ProductWhere }[] = [];
-    const delegate: ProductDelegate = {
-      findUnique: async () => productRow,
-      findMany: async (args) => (calls.push(args), [productRow]),
-      create: async () => productRow,
-      update: async () => productRow,
-      delete: async () => productRow,
-      ...overrides,
+describe("ProductRepositoryImpl", () => {
+  /** Cliente Prisma falso: solo lo que el repositorio usa de `prisma.product`. */
+  function setup(overrides: Record<string, (args: unknown) => Promise<unknown>> = {}) {
+    const calls: Record<string, unknown[]> = {};
+    const record = (name: string, result: unknown) => async (args: unknown) => {
+      (calls[name] ??= []).push(args);
+      return result;
     };
-    return { repo: new PrismaProductRepository(delegate), calls };
+    const row = {
+      id: "p1", name: "Rosas", slug: "rosas", description: null, price: { toString: () => "50000.00" },
+      categoryId: "c1", isActive: true, createdAt: NOW, updatedAt: NOW, product_images: [],
+    };
+    const prisma = {
+      product: {
+        findUnique: record("findUnique", row),
+        findMany: record("findMany", [row]),
+        create: record("create", row),
+        update: record("update", row),
+        delete: record("delete", row),
+        ...overrides,
+      },
+    } as unknown as PrismaClient;
+    return { repo: new ProductRepositoryImpl(prisma), calls };
   }
 
-  it("la vista pública exige producto disponible y categoría activa en la misma consulta", async () => {
+  function whereOf(calls: Record<string, unknown[]>): unknown {
+    return (calls["findMany"]?.[0] as { where: unknown }).where;
+  }
+
+  it("la vista pública exige producto disponible y categoría sin categoría o activa en la misma consulta", async () => {
     const { repo, calls } = setup();
-    await repo.findAll({ publicOnly: true, categoryId: "c1", search: "ros" });
-    assert.deepEqual(calls[0]?.where, {
+    await repo.list({ onlyAvailable: true, categoryId: "c1" });
+    assert.deepEqual(whereOf(calls), {
       categoryId: "c1",
-      name: { contains: "ros", mode: "insensitive" },
-      isAvailable: true,
-      category: { isActive: true },
+      isActive: true,
+      OR: [{ categoryId: null }, { categories: { is_active: true } }],
     });
   });
 
-  it("sin opciones no filtra nada (panel administrativo)", async () => {
+  it("sin filtros no restringe nada (panel administrativo)", async () => {
     const { repo, calls } = setup();
-    await repo.findAll();
-    assert.deepEqual(calls[0]?.where, {});
+    await repo.list();
+    assert.deepEqual(whereOf(calls), {});
   });
 
-  it("al crear: P2002 es slug repetido y P2003 es categoría inexistente", async () => {
+  it("convierte la fila: precio decimal a centavos y descripción nula a texto vacío", async () => {
+    const product = await setup().repo.findById("p1");
+    assert.equal(product?.priceInCents, 5_000_000);
+    assert.equal(product?.description, "");
+    assert.equal(product?.isAvailable, true);
+  });
+
+  it("al crear: P2002 sobre slug es slug repetido y P2003 es categoría inexistente", async () => {
     const data = { name: "a", slug: "a", description: "", priceInCents: 100, categoryId: "c9", imageUrl: null, isAvailable: true };
-    await assert.rejects(setup({ create: async () => { throw prismaError("P2002"); } }).repo.create(data), ConflictError);
-    await assert.rejects(setup({ create: async () => { throw prismaError("P2003"); } }).repo.create(data), NotFoundError);
+    const dup = Object.assign(prismaError("P2002"), { meta: { target: ["slug"] } });
+    await assert.rejects(setup({ create: async () => { throw dup; } }).repo.create(data), DuplicateSlugError);
+    await assert.rejects(setup({ create: async () => { throw prismaError("P2003"); } }).repo.create(data), CategoryNotFoundError);
   });
 
-  it("al actualizar: P2025 producto inexistente, P2002 slug repetido, P2003 categoría inexistente", async () => {
-    await assert.rejects(setup({ update: async () => { throw prismaError("P2025"); } }).repo.update("p1", {}), NotFoundError);
-    await assert.rejects(setup({ update: async () => { throw prismaError("P2002"); } }).repo.update("p1", {}), ConflictError);
+  it("al actualizar: P2025 producto inexistente", async () => {
     await assert.rejects(
-      setup({ update: async () => { throw prismaError("P2003"); } }).repo.update("p1", { categoryId: "c9" }),
-      NotFoundError,
+      setup({ update: async () => { throw prismaError("P2025"); } }).repo.update("p1", {}),
+      ProductNotFoundError,
     );
   });
 
-  it("al eliminar: P2025 no existe y P2003 significa que tiene pedidos asociados", async () => {
-    await assert.rejects(setup({ delete: async () => { throw prismaError("P2025"); } }).repo.delete("p1"), NotFoundError);
+  it("al eliminar: P2025 no existe y P2003 significa que tiene registros asociados", async () => {
+    await assert.rejects(setup({ delete: async () => { throw prismaError("P2025"); } }).repo.delete("p1"), ProductNotFoundError);
     await assert.rejects(setup({ delete: async () => { throw prismaError("P2003"); } }).repo.delete("p1"), ConflictError);
     await setup().repo.delete("p1");
   });

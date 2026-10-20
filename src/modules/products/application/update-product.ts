@@ -1,92 +1,74 @@
-/**
- * Caso de uso: actualizar un producto.
- *
- * Reglas:
- *  - Solo se validan y aplican los campos enviados (actualización parcial).
- *  - El slug NO cambia al renombrar el producto (mantiene estables las URLs
- *    públicas); solo cambia si se envía explícitamente.
- *  - Si se cambia la categoría, la nueva debe existir y estar activa. Si el
- *    producto conserva su categoría, no se exige que siga activa: se puede
- *    seguir editando un producto cuya categoría fue desactivada (por ejemplo,
- *    para moverlo a otra).
- *  - El precio se revalida siempre en el dominio; nunca se confía en el cliente.
- */
-
-import { BusinessRuleError, ConflictError, NotFoundError } from "../../shared/domain/errors.ts";
-import { resolveSlug } from "../../shared/domain/slug.ts";
-import type { CategoryRepository } from "../../categories/domain/category-repository.ts";
 import {
-  normalizeImageUrl,
-  normalizeProductDescription,
-  normalizeProductName,
-  validatePriceInCents,
-  type Product,
-  type ProductChanges,
-} from "../domain/product.ts";
-import type { ProductRepository } from "../domain/product-repository.ts";
+  CategoryInactiveError,
+  CategoryNotFoundError,
+  DuplicateSlugError,
+  ProductNotFoundError,
+} from '../domain/errors';
+import type { Product } from '../domain/product';
+import type { ProductChanges, ProductRepository } from '../domain/product-repository';
+import { buildProductChanges, type ProductUpdateDraft } from '../domain/product-rules';
+import type { CategoryReader } from './create-product';
 
-export interface UpdateProductInput {
-  name?: string;
-  slug?: string;
-  description?: string;
-  priceInCents?: number;
-  categoryId?: string;
-  /** `null` o vacío elimina la imagen; `undefined` la deja igual. */
-  imageUrl?: string | null;
-  isAvailable?: boolean;
-}
+export type UpdateProductInput = ProductUpdateDraft;
 
+/**
+ * Actualización parcial de un producto.
+ *
+ *  - Solo se validan y aplican los campos enviados.
+ *  - El slug NO cambia al renombrar (las URLs públicas se mantienen estables); solo cambia si se
+ *    envía de forma explícita.
+ *  - Si cambia la categoría, la nueva debe existir y estar activa. Si conserva la suya no se exige
+ *    que siga activa: se puede seguir editando un producto cuya categoría fue desactivada
+ *    (por ejemplo, para moverlo a otra).
+ *  - Los cambios que no modifican nada no producen escritura.
+ */
 export class UpdateProduct {
-  private readonly products: ProductRepository;
-  private readonly categories: CategoryRepository;
-
-  constructor(deps: { products: ProductRepository; categories: CategoryRepository }) {
-    this.products = deps.products;
-    this.categories = deps.categories;
-  }
+  constructor(
+    private readonly products: ProductRepository,
+    private readonly categories: CategoryReader,
+  ) {}
 
   /**
-   * @throws NotFoundError si el producto o la nueva categoría no existen.
+   * @throws ProductNotFoundError si el producto no existe.
    * @throws ValidationError si algún dato es inválido.
-   * @throws BusinessRuleError si la nueva categoría está inactiva.
-   * @throws ConflictError si el nuevo slug pertenece a otro producto.
+   * @throws CategoryNotFoundError | CategoryInactiveError si la nueva categoría no sirve.
+   * @throws DuplicateSlugError si el slug pertenece a otro producto.
    */
   async execute(id: string, input: UpdateProductInput): Promise<Product> {
     const current = await this.products.findById(id);
-    if (!current) throw new NotFoundError("Producto", id);
+    if (!current) throw new ProductNotFoundError();
 
+    const requested = buildProductChanges(input, current.name);
     const changes: ProductChanges = {};
 
-    if (input.name !== undefined) changes.name = normalizeProductName(input.name);
-    if (input.description !== undefined) {
-      changes.description = normalizeProductDescription(input.description);
+    if (requested.name !== undefined && requested.name !== current.name) {
+      changes.name = requested.name;
     }
-    if (input.priceInCents !== undefined) {
-      changes.priceInCents = validatePriceInCents(input.priceInCents);
+    if (requested.description !== undefined && requested.description !== current.description) {
+      changes.description = requested.description;
     }
-    if (input.imageUrl !== undefined) changes.imageUrl = normalizeImageUrl(input.imageUrl);
-    if (input.isAvailable !== undefined) changes.isAvailable = input.isAvailable;
-
-    if (input.categoryId !== undefined && input.categoryId !== current.categoryId) {
-      const category = await this.categories.findById(input.categoryId);
-      if (!category) throw new NotFoundError("Categoría", input.categoryId);
-      if (!category.isActive) {
-        throw new BusinessRuleError(
-          `La categoría "${category.name}" está inactiva y no admite productos.`,
-        );
-      }
-      changes.categoryId = category.id;
+    if (requested.priceInCents !== undefined && requested.priceInCents !== current.priceInCents) {
+      changes.priceInCents = requested.priceInCents;
+    }
+    if (requested.isAvailable !== undefined && requested.isAvailable !== current.isAvailable) {
+      changes.isAvailable = requested.isAvailable;
+    }
+    if (requested.imageUrl !== undefined && requested.imageUrl !== current.imageUrl) {
+      changes.imageUrl = requested.imageUrl;
     }
 
-    if (input.slug !== undefined) {
-      const slug = resolveSlug(input.slug, changes.name ?? current.name);
-      if (slug !== current.slug) {
-        const owner = await this.products.findBySlug(slug);
-        if (owner && owner.id !== id) {
-          throw new ConflictError(`Ya existe un producto con el slug "${slug}".`);
-        }
-        changes.slug = slug;
-      }
+    const newCategoryId = requested.categoryId;
+    if (newCategoryId != null && newCategoryId !== current.categoryId) {
+      const category = await this.categories.findById(newCategoryId);
+      if (!category) throw new CategoryNotFoundError();
+      if (!category.isActive) throw new CategoryInactiveError();
+      changes.categoryId = newCategoryId;
+    }
+
+    if (requested.slug !== undefined && requested.slug !== current.slug) {
+      const owner = await this.products.findBySlug(requested.slug);
+      if (owner && owner.id !== id) throw new DuplicateSlugError();
+      changes.slug = requested.slug;
     }
 
     if (Object.keys(changes).length === 0) return current;

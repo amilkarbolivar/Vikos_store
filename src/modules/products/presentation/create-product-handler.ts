@@ -1,14 +1,9 @@
-import {
-  PayloadTooLargeError,
-  ValidationError,
-} from '../../shared/domain/errors';
+import { readJsonBody } from '../../shared/presentation/read-json-body';
 import type { CreateProductInput } from '../application/create-product';
 import type { Product } from '../domain/product';
 import { parseCreateProductBody } from './create-product-request';
 import { toErrorResponse, type ErrorLogger } from './http-error-mapper';
 import { toProductResponse } from './product-presenter';
-
-const MAX_BODY_BYTES = 100_000;
 
 export interface CreateProductHandlerDeps {
   /** Debe lanzar UnauthorizedError (401) o ForbiddenError (403) si quien llama no es administrador. */
@@ -41,22 +36,4 @@ export function createProductHandler(deps: CreateProductHandlerDeps) {
       return toErrorResponse(error, logger);
     }
   };
-}
-
-async function readJsonBody(request: Request): Promise<unknown> {
-  const declaredLength = Number(request.headers.get('content-length') ?? 0);
-  if (declaredLength > MAX_BODY_BYTES) {
-    throw new PayloadTooLargeError();
-  }
-
-  const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) {
-    throw new PayloadTooLargeError();
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new ValidationError([{ field: 'body', message: 'El cuerpo debe ser JSON válido' }]);
-  }
 }

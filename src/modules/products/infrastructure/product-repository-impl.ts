@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 
-import { AppError, InfrastructureError } from '../../shared/domain/errors';
+import { AppError, ConflictError, InfrastructureError } from '../../shared/domain/errors';
 import { centsToDecimalString, decimalStringToCents } from '../../shared/domain/money';
 import {
   CategoryNotFoundError,
@@ -75,7 +75,11 @@ export class ProductRepositoryImpl implements ProductRepository {
       const rows = await this.prisma.product.findMany({
         where: {
           ...(filter.categoryId ? { categoryId: filter.categoryId } : {}),
-          ...(filter.onlyAvailable ? { isActive: true } : {}),
+          // Público: disponible Y (sin categoría o con categoría activa). Desactivar una categoría
+          // oculta sus productos sin tocarlos; reactivarla los muestra de nuevo.
+          ...(filter.onlyAvailable
+            ? { isActive: true, OR: [{ categoryId: null }, { categories: { is_active: true } }] }
+            : {}),
         },
         include: productInclude,
         orderBy: { createdAt: 'desc' },
@@ -167,6 +171,11 @@ export class ProductRepositoryImpl implements ProductRepository {
       // product_images se elimina en cascada (ON DELETE CASCADE en la base de datos)
       await this.prisma.product.delete({ where: { id } });
     } catch (error) {
+      if (readPrismaCode(error) === 'P2003') {
+        throw new ConflictError(
+          'El producto está referenciado por otros registros. Desactívalo en lugar de eliminarlo.',
+        );
+      }
       throw translatePrismaError(error);
     }
   }

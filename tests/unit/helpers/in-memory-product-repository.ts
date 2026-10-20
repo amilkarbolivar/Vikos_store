@@ -1,20 +1,25 @@
 /**
  * Doble de prueba: repositorio de productos en memoria.
  *
- * Igual que el de categorías: mismo contrato que la versión real con Prisma, solo
- * para pruebas. Vive en `tests/`, no en el código de la aplicación.
- *
- * Para simular la clave foránea y el filtro `publicOnly` necesita consultar
- * categorías. Depende del CONTRATO `CategoryRepository` (no de la clase en
- * memoria ni de Prisma), así respeta los límites entre módulos.
+ * Cumple el mismo contrato (`ProductRepository`) que `ProductRepositoryImpl` y reproduce lo que
+ * hace PostgreSQL: slug UNIQUE, clave foránea de la categoría y la regla de visibilidad pública
+ * (disponible Y categoría activa). Depende del CONTRATO `CategoryRepository`, no de Prisma.
  */
 
 import { randomUUID } from "node:crypto";
 
 import type { CategoryRepository } from "../../../src/modules/categories/domain/category-repository.ts";
-import { ConflictError, NotFoundError } from "../../../src/modules/shared/domain/errors.ts";
-import type { NewProduct, Product, ProductChanges } from "../../../src/modules/products/domain/product.ts";
-import type { ListProductsOptions, ProductRepository } from "../../../src/modules/products/domain/product-repository.ts";
+import {
+  CategoryNotFoundError,
+  DuplicateSlugError,
+  ProductNotFoundError,
+} from "../../../src/modules/products/domain/errors.ts";
+import type { NewProduct, Product } from "../../../src/modules/products/domain/product.ts";
+import type {
+  ProductChanges,
+  ProductListFilter,
+  ProductRepository,
+} from "../../../src/modules/products/domain/product-repository.ts";
 
 export class InMemoryProductRepository implements ProductRepository {
   readonly items = new Map<string, Product>();
@@ -32,16 +37,16 @@ export class InMemoryProductRepository implements ProductRepository {
     return [...this.items.values()].find((p) => p.slug === slug) ?? null;
   }
 
-  async findAll(options: ListProductsOptions = {}): Promise<Product[]> {
+  async list(filter: ProductListFilter = {}): Promise<Product[]> {
     let result = [...this.items.values()];
-    if (options.categoryId) result = result.filter((p) => p.categoryId === options.categoryId);
-    if (options.search) {
-      const term = options.search.toLowerCase();
-      result = result.filter((p) => p.name.toLowerCase().includes(term));
-    }
-    if (options.publicOnly) {
+    if (filter.categoryId) result = result.filter((p) => p.categoryId === filter.categoryId);
+    if (filter.onlyAvailable) {
       const visible = await Promise.all(
-        result.map(async (p) => p.isAvailable && (await this.categories.findById(p.categoryId))?.isActive === true),
+        result.map(async (p) => {
+          if (!p.isAvailable) return false;
+          if (p.categoryId === null) return true;
+          return (await this.categories.findById(p.categoryId))?.isActive === true;
+        }),
       );
       result = result.filter((_, index) => visible[index]);
     }
@@ -49,10 +54,8 @@ export class InMemoryProductRepository implements ProductRepository {
   }
 
   async create(data: NewProduct): Promise<Product> {
-    if (!(await this.categories.findById(data.categoryId))) {
-      throw new NotFoundError("Categoría", data.categoryId); // simula la clave foránea
-    }
-    if (await this.findBySlug(data.slug)) throw new ConflictError("slug duplicado");
+    if (!(await this.categories.findById(data.categoryId))) throw new CategoryNotFoundError();
+    if (await this.findBySlug(data.slug)) throw new DuplicateSlugError();
     const now = new Date();
     const product: Product = { id: randomUUID(), ...data, createdAt: now, updatedAt: now };
     this.items.set(product.id, product);
@@ -61,17 +64,21 @@ export class InMemoryProductRepository implements ProductRepository {
 
   async update(id: string, changes: ProductChanges): Promise<Product> {
     const current = this.items.get(id);
-    if (!current) throw new NotFoundError("Producto", id);
+    if (!current) throw new ProductNotFoundError();
     if (changes.slug) {
       const owner = await this.findBySlug(changes.slug);
-      if (owner && owner.id !== id) throw new ConflictError("slug duplicado");
+      if (owner && owner.id !== id) throw new DuplicateSlugError();
     }
-    const updated: Product = { ...current, ...changes, updatedAt: new Date() };
+    const updated: Product = {
+      ...current,
+      ...Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)),
+      updatedAt: new Date(),
+    };
     this.items.set(id, updated);
     return updated;
   }
 
   async delete(id: string): Promise<void> {
-    if (!this.items.delete(id)) throw new NotFoundError("Producto", id);
+    if (!this.items.delete(id)) throw new ProductNotFoundError();
   }
 }

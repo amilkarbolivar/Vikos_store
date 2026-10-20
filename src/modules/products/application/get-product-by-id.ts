@@ -1,25 +1,18 @@
+import { ProductNotFoundError } from '../domain/errors';
+import type { Product } from '../domain/product';
+import type { ProductRepository } from '../domain/product-repository';
+
 /**
- * Caso de uso: obtener un producto por su identificador.
- *
- * Lo usa el panel administrativo (edición). Devuelve el producto aunque no esté
- * disponible: el administrador debe poder verlo y reactivarlo.
+ * Obtiene un producto por id, esté o no disponible: el panel de administración debe poder
+ * verlo y reactivarlo. La visibilidad pública la decide `GetPublicProduct`.
  */
-
-import { NotFoundError } from "../../shared/domain/errors.ts";
-import type { Product } from "../domain/product.ts";
-import type { ProductRepository } from "../domain/product-repository.ts";
-
 export class GetProductById {
-  private readonly products: ProductRepository;
+  constructor(private readonly products: ProductRepository) {}
 
-  constructor(deps: { products: ProductRepository }) {
-    this.products = deps.products;
-  }
-
-  /** @throws NotFoundError si el producto no existe. */
+  /** @throws ProductNotFoundError si no existe. */
   async execute(id: string): Promise<Product> {
     const product = await this.products.findById(id);
-    if (!product) throw new NotFoundError("Producto", id);
+    if (!product) throw new ProductNotFoundError();
     return product;
   }
 }

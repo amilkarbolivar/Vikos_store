@@ -34,7 +34,8 @@ services:
       NODE_ENV: development
       WATCHPACK_POLLING: "true"
       DATABASE_URL: "postgresql://postgres:0123@db:5432/vikos_store?schema=public"
-      ALLOW_INSECURE_ADMIN_BYPASS: "true"
+      ALLOW_INSECURE_ADMIN_BYPASS: "false"
+      SESSION_SECRET: "ATGfKOhTG/jQOCF9hDv+axt32C0I4hjCiSMq1T7R1onhBbkfIPlN0bTFtXS1kznQ"
 
 volumes:
   vikos_node_modules:

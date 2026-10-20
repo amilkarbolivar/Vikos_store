@@ -25,6 +25,7 @@ import { DeactivateProduct } from "../../modules/products/application/deactivate
 import { DeleteProduct } from "../../modules/products/application/delete-product.ts";
 import { GetProductById } from "../../modules/products/application/get-product-by-id.ts";
 import { GetProductBySlug } from "../../modules/products/application/get-product-by-slug.ts";
+import { GetPublicProduct } from "../../modules/products/application/get-public-product.ts";
 import { ListProducts } from "../../modules/products/application/list-products.ts";
 import { UpdateProduct } from "../../modules/products/application/update-product.ts";
 import type { ProductRepository } from "../../modules/products/domain/product-repository.ts";
@@ -43,6 +44,7 @@ export interface Container {
     create: CreateProduct;
     getById: GetProductById;
     getBySlug: GetProductBySlug;
+    getPublic: GetPublicProduct;
     list: ListProducts;
     update: UpdateProduct;
     deactivate: DeactivateProduct;
@@ -67,13 +69,14 @@ export function buildContainer(deps: {
       reactivate: new ReactivateCategory({ categories }),
     },
     products: {
-      create: new CreateProduct({ products, categories }),
-      getById: new GetProductById({ products }),
-      getBySlug: new GetProductBySlug({ products }),
-      list: new ListProducts({ products }),
-      update: new UpdateProduct({ products, categories }),
-      deactivate: new DeactivateProduct({ products }),
-      delete: new DeleteProduct({ products }),
+      create: new CreateProduct(products, categories),
+      getById: new GetProductById(products),
+      getBySlug: new GetProductBySlug(products),
+      getPublic: new GetPublicProduct(products, categories),
+      list: new ListProducts(products),
+      update: new UpdateProduct(products, categories),
+      deactivate: new DeactivateProduct(products),
+      delete: new DeleteProduct(products),
     },
   };
 }
