@@ -1,26 +1,80 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * ============================================================================
+ * SISTEMA DE DISEÑO (tokens)
+ * ============================================================================
+ * Todos los colores y medidas del sitio se definen AQUÍ, una sola vez. Los componentes
+ * usan nombres con significado (bg-brand-600, text-muted, rounded-card...) en lugar de
+ * valores sueltos, así cambiar la identidad visual = editar este bloque.
+ *
+ * En Tailwind 4 todo lo que se declara dentro de @theme se convierte automáticamente en
+ * clases utilitarias: --color-brand-600 genera bg-brand-600, text-brand-600, etc.
+ */
+@theme {
+  /* Fondo cálido y texto principal (contraste > 14:1). */
+  --color-cream: #fff8f1;
+  --color-ink: #2a1a20;
+  /* Texto secundario. Sobre `cream` tiene contraste ≈ 5.9:1 (cumple WCAG AA). */
+  --color-muted: #6f5b63;
+  /* Bordes y separadores suaves. */
+  --color-line: #f0e0d8;
+
+  /* Color de marca (rosa). 600 con texto blanco tiene contraste ≈ 5:1 (cumple WCAG AA). */
+  --color-brand-50: #fff1f3;
+  --color-brand-100: #ffe0e6;
+  --color-brand-500: #e8456b;
+  --color-brand-600: #d02a56;
+  --color-brand-700: #ae1f45;
+
+  /* Acento dorado para detalles. */
+  --color-gold: #f5b942;
+
+  /* Verde de WhatsApp oscurecido para que el texto blanco sea legible (≈ 5:1). */
+  --color-whatsapp: #15803d;
+  --color-whatsapp-dark: #166534;
+
+  /* Esquinas y sombras compartidas. */
+  --radius-card: 1.25rem;
+  --shadow-card: 0 1px 2px rgb(42 26 32 / 0.05), 0 8px 24px rgb(42 26 32 / 0.06);
+  --shadow-card-hover: 0 2px 4px rgb(42 26 32 / 0.06), 0 16px 36px rgb(42 26 32 / 0.12);
 }
 
+/*
+ * `inline` hace que Tailwind use directamente la variable --font-geist-sans que define
+ * next/font en <html> (ver layout.tsx), en lugar de copiar su valor.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* La tienda usa un solo tema claro (fondo crema); evita que el navegador invierta colores. */
+:root {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/*
+ * Foco visible para quienes navegan con teclado. Se aplica a TODOS los elementos
+ * interactivos para no tener que repetirlo en cada componente.
+ */
+:where(a, button, summary, input, select, textarea):focus-visible {
+  outline: 3px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+/* Quien pidió "reducir movimiento" en su sistema no ve animaciones. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

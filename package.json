@@ -11,13 +11,14 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"tests/unit/**/*.test.ts\"",
+    "test": "tsx --test \"tests/unit/**/*.test.ts\"",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "db:check": "tsx prisma/check-connection.ts"
+    "db:check": "tsx prisma/check-connection.ts",
+    "admin:create": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

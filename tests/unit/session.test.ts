@@ -183,7 +183,7 @@ describe("flujo login -> requireAdmin", () => {
   });
 
   it("logout borra la cookie (204) sin exigir sesión", async () => {
-    const response = await logoutHandler({ secureCookies: false })(new Request("http://x/api/auth/logout", { method: "POST" }));
+    const response = await logoutHandler({ secureCookies: false })();
     assert.equal(response.status, 204);
     assert.match(response.headers.get("set-cookie") ?? "", /Max-Age=0/);
   });

@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:17
+    container_name: vikos-store-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vikos_store
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "0123"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vikos_store"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    image: node:24-alpine
+    container_name: vikos-store-next
+    working_dir: /app
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - vikos_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0"
+    environment: 
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+      DATABASE_URL: "postgresql://postgres:0123@db:5432/vikos_store?schema=public"
+      ALLOW_INSECURE_ADMIN_BYPASS: "false"
+      SESSION_SECRET: "ATGfKOhTG/jQOCF9hDv+axt32C0I4hjCiSMq1T7R1onhBbkfIPlN0bTFtXS1kznQ"
+
+volumes:
+  vikos_node_modules:
+  postgres_data:

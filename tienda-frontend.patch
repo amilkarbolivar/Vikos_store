@@ -1,0 +1,2772 @@
+diff --git a/package.json b/package.json
+index 63d0464..44c7130 100644
+--- a/package.json
++++ b/package.json
+@@ -11,13 +11,14 @@
+     "start": "next start",
+     "lint": "eslint",
+     "typecheck": "tsc --noEmit",
+-    "test": "node --test \"tests/unit/**/*.test.ts\"",
++    "test": "tsx --test \"tests/unit/**/*.test.ts\"",
+     "db:generate": "prisma generate",
+     "db:migrate": "prisma migrate dev",
+     "db:deploy": "prisma migrate deploy",
+     "db:studio": "prisma studio",
+     "db:seed": "tsx prisma/seed.ts",
+-    "db:check": "tsx prisma/check-connection.ts"
++    "db:check": "tsx prisma/check-connection.ts",
++    "admin:create": "tsx scripts/create-admin.ts"
+   },
+   "dependencies": {
+     "@prisma/adapter-pg": "^7.10.0",
+diff --git a/scripts/create-admin.ts b/scripts/create-admin.ts
+new file mode 100644
+index 0000000..9750bb8
+--- /dev/null
++++ b/scripts/create-admin.ts
+@@ -0,0 +1,76 @@
++/**
++ * Crea (o actualiza) un usuario administrador en la base de datos.
++ *
++ * Uso:
++ *   ADMIN_EMAIL=admin@vikos.com ADMIN_PASSWORD='una-clave-larga' ADMIN_NAME='Administrador' \
++ *     npm run admin:create
++ *
++ * Solo imprimir el hash (para insertarlo tú con SQL), sin conectarse a la base de datos:
++ *   ADMIN_PASSWORD='una-clave-larga' npm run admin:create -- --hash-only
++ *
++ * La contraseña se lee del entorno y no de argumentos, para que no quede en el historial del
++ * shell de la misma forma ni se vea en la lista de procesos. Si el correo ya existe, se
++ * actualizan nombre, contraseña, rol y se reactiva la cuenta (sirve para resetear la clave).
++ */
++
++import { ScryptPasswordHasher } from "../src/modules/auth/infrastructure/scrypt-password-hasher.ts";
++
++const MIN_PASSWORD_LENGTH = 12;
++const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
++
++function fail(message: string): never {
++  console.error(`Error: ${message}`);
++  process.exit(1);
++}
++
++async function main(): Promise<void> {
++  const password = process.env.ADMIN_PASSWORD ?? "";
++  if (password.length < MIN_PASSWORD_LENGTH) {
++    fail(`ADMIN_PASSWORD es obligatoria y debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`);
++  }
++
++  const passwordHash = await new ScryptPasswordHasher().hash(password);
++
++  if (process.argv.includes("--hash-only")) {
++    console.log(passwordHash);
++    return;
++  }
++
++  // El login normaliza el correo con trim + minúsculas: se guarda igual para que coincida.
++  const email = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase();
++  const name = (process.env.ADMIN_NAME ?? "Administrador").trim();
++
++  if (!EMAIL_PATTERN.test(email)) fail("ADMIN_EMAIL es obligatorio y debe ser un correo válido.");
++  if (!name || name.length > 120) fail("ADMIN_NAME debe tener entre 1 y 120 caracteres.");
++
++  const connectionString = process.env.DATABASE_URL;
++  if (!connectionString) fail("DATABASE_URL no está definida.");
++
++  // Carga diferida: --hash-only y las validaciones no necesitan el cliente de Prisma.
++  const { PrismaPg } = await import("@prisma/adapter-pg");
++  const { PrismaClient } = await import("@prisma/client");
++  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
++
++  try {
++    const existing = await prisma.users.findUnique({ where: { email } });
++    const user = await prisma.users.upsert({
++      where: { email },
++      create: { name, email, password_hash: passwordHash, role: "ADMIN", is_active: true },
++      update: {
++        name,
++        password_hash: passwordHash,
++        role: "ADMIN",
++        is_active: true,
++        updated_at: new Date(),
++      },
++    });
++    console.log(`${existing ? "Actualizado" : "Creado"} administrador ${user.email} (id ${user.id}).`);
++  } finally {
++    await prisma.$disconnect();
++  }
++}
++
++main().catch((error: unknown) => {
++  console.error('Error inesperado:', error instanceof Error ? error.message : error);
++  process.exit(1);
++});
+diff --git a/src/app/(store)/categorias/[slug]/page.tsx b/src/app/(store)/categorias/[slug]/page.tsx
+index e69de29..c73418b 100644
+--- a/src/app/(store)/categorias/[slug]/page.tsx
++++ b/src/app/(store)/categorias/[slug]/page.tsx
+@@ -0,0 +1,35 @@
++import type { Metadata } from "next";
++import { Suspense } from "react";
++
++import { CatalogBrowserSkeleton } from "@/components/catalog/catalog-browser";
++import { CategoryContent } from "@/components/page-content/category-content";
++import { truncate } from "@/lib/truncate";
++import { getCategory } from "@/services/catalog-service";
++
++type Props = { params: Promise<{ slug: string }> };
++
++/**
++ * Título de la pestaña según la categoría. `getCategory` está envuelta en `cache()`,
++ * así que si la página pide la misma categoría, la API se consulta una sola vez.
++ */
++export async function generateMetadata({ params }: Props): Promise<Metadata> {
++  const { slug } = await params;
++  const category = await getCategory(slug);
++
++  if (!category) return { title: "Categoría no encontrada" };
++
++  return {
++    title: category.name,
++    description: truncate(category.description ?? `Regalos de la categoría ${category.name}.`),
++  };
++}
++
++/** CATEGORÍA ( /categorias/<slug> ): los productos de una sola categoría. */
++export default function CategoryPage({ params }: Props) {
++  return (
++    <Suspense fallback={<CatalogBrowserSkeleton />}>
++      {/* Se pasa la PROMESA de `params` (sin esperarla aquí): ver CategoryContent. */}
++      <CategoryContent paramsPromise={params} />
++    </Suspense>
++  );
++}
+diff --git a/src/app/(store)/productos/[slug]/page.tsx b/src/app/(store)/productos/[slug]/page.tsx
+index e69de29..3d2d69d 100644
+--- a/src/app/(store)/productos/[slug]/page.tsx
++++ b/src/app/(store)/productos/[slug]/page.tsx
+@@ -0,0 +1,41 @@
++import type { Metadata } from "next";
++import { Suspense } from "react";
++
++import { ProductDetailSkeleton } from "@/components/catalog/product-detail";
++import { ProductContent } from "@/components/page-content/product-content";
++import { truncate } from "@/lib/truncate";
++import { getProduct } from "@/services/catalog-service";
++
++type Props = { params: Promise<{ slug: string }> };
++
++/**
++ * Título, descripción e imagen que se ven en Google y al compartir el enlace por WhatsApp,
++ * Instagram, etc. (Open Graph). Usa los datos reales del producto.
++ */
++export async function generateMetadata({ params }: Props): Promise<Metadata> {
++  const { slug } = await params;
++  const product = await getProduct(slug);
++
++  if (!product) return { title: "Producto no encontrado" };
++
++  const description = truncate(product.description || `Pide ${product.name} por WhatsApp.`);
++
++  return {
++    title: product.name,
++    description,
++    openGraph: {
++      title: product.name,
++      description,
++      ...(product.imageUrl ? { images: [product.imageUrl] } : {}),
++    },
++  };
++}
++
++/** DETALLE ( /productos/<slug> ): la ficha completa de un producto. */
++export default function ProductPage({ params }: Props) {
++  return (
++    <Suspense fallback={<ProductDetailSkeleton />}>
++      <ProductContent paramsPromise={params} />
++    </Suspense>
++  );
++}
+diff --git a/src/app/(store)/productos/page.tsx b/src/app/(store)/productos/page.tsx
+new file mode 100644
+index 0000000..cf8ac7a
+--- /dev/null
++++ b/src/app/(store)/productos/page.tsx
+@@ -0,0 +1,20 @@
++import type { Metadata } from "next";
++import { Suspense } from "react";
++
++import { CatalogBrowserSkeleton } from "@/components/catalog/catalog-browser";
++import { AllProductsContent } from "@/components/page-content/all-products-content";
++
++/** Título y descripción de la pestaña / Google. El título final es "Tienda | Vikos Store". */
++export const metadata: Metadata = {
++  title: "Tienda",
++  description: "Explora todos nuestros regalos y pídelos por WhatsApp.",
++};
++
++/** TIENDA ( /productos ): todos los productos visibles, con filtro por categoría. */
++export default function ProductsPage() {
++  return (
++    <Suspense fallback={<CatalogBrowserSkeleton />}>
++      <AllProductsContent />
++    </Suspense>
++  );
++}
+diff --git a/src/app/api/auth/logout/route.ts b/src/app/api/auth/logout/route.ts
+index 78d316d..4b5f541 100644
+--- a/src/app/api/auth/logout/route.ts
++++ b/src/app/api/auth/logout/route.ts
+@@ -1,6 +1,7 @@
+ import { logoutHandler } from '@/modules/auth/presentation/logout-handler';
+ import { shouldUseSecureCookies } from '@/modules/auth/presentation/session-cookie';
+ 
+-export async function POST(request: Request): Promise<Response> {
+-  return logoutHandler({ secureCookies: shouldUseSecureCookies() })(request);
++/** Cerrar sesión no necesita leer la petición: solo borra la cookie. */
++export async function POST(): Promise<Response> {
++  return logoutHandler({ secureCookies: shouldUseSecureCookies() })();
+ }
+diff --git a/src/app/error.tsx b/src/app/error.tsx
+new file mode 100644
+index 0000000..dc92d72
+--- /dev/null
++++ b/src/app/error.tsx
+@@ -0,0 +1,31 @@
++"use client";
++
++import { Button, ButtonLink } from "@/components/ui/button";
++import { Container } from "@/components/ui/container";
++import { EmptyState } from "@/components/ui/empty-state";
++
++/**
++ * Pantalla de error inesperado (por ejemplo, la API no responde).
++ *
++ * Next.js exige que sea un componente de cliente. Recibe `retry`, que vuelve a intentar
++ * renderizar la página. A propósito NO se muestra el mensaje técnico del error al
++ * visitante (podría revelar detalles internos); solo un texto amable.
++ */
++export default function ErrorPage({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
++  return (
++    <Container className="py-16 sm:py-24">
++      <EmptyState
++        title="Algo salió mal"
++        description="No pudimos cargar esta página. Inténtalo de nuevo en unos segundos."
++        action={
++          <div className="flex flex-col gap-3 sm:flex-row">
++            <Button onClick={() => retry()}>Reintentar</Button>
++            <ButtonLink href="/" variant="secondary">
++              Ir al inicio
++            </ButtonLink>
++          </div>
++        }
++      />
++    </Container>
++  );
++}
+diff --git a/src/app/globals.css b/src/app/globals.css
+index a2dc41e..57f2bca 100644
+--- a/src/app/globals.css
++++ b/src/app/globals.css
+@@ -1,26 +1,80 @@
+ @import "tailwindcss";
+ 
+-:root {
+-  --background: #ffffff;
+-  --foreground: #171717;
++/*
++ * ============================================================================
++ * SISTEMA DE DISEÑO (tokens)
++ * ============================================================================
++ * Todos los colores y medidas del sitio se definen AQUÍ, una sola vez. Los componentes
++ * usan nombres con significado (bg-brand-600, text-muted, rounded-card...) en lugar de
++ * valores sueltos, así cambiar la identidad visual = editar este bloque.
++ *
++ * En Tailwind 4 todo lo que se declara dentro de @theme se convierte automáticamente en
++ * clases utilitarias: --color-brand-600 genera bg-brand-600, text-brand-600, etc.
++ */
++@theme {
++  /* Fondo cálido y texto principal (contraste > 14:1). */
++  --color-cream: #fff8f1;
++  --color-ink: #2a1a20;
++  /* Texto secundario. Sobre `cream` tiene contraste ≈ 5.9:1 (cumple WCAG AA). */
++  --color-muted: #6f5b63;
++  /* Bordes y separadores suaves. */
++  --color-line: #f0e0d8;
++
++  /* Color de marca (rosa). 600 con texto blanco tiene contraste ≈ 5:1 (cumple WCAG AA). */
++  --color-brand-50: #fff1f3;
++  --color-brand-100: #ffe0e6;
++  --color-brand-500: #e8456b;
++  --color-brand-600: #d02a56;
++  --color-brand-700: #ae1f45;
++
++  /* Acento dorado para detalles. */
++  --color-gold: #f5b942;
++
++  /* Verde de WhatsApp oscurecido para que el texto blanco sea legible (≈ 5:1). */
++  --color-whatsapp: #15803d;
++  --color-whatsapp-dark: #166534;
++
++  /* Esquinas y sombras compartidas. */
++  --radius-card: 1.25rem;
++  --shadow-card: 0 1px 2px rgb(42 26 32 / 0.05), 0 8px 24px rgb(42 26 32 / 0.06);
++  --shadow-card-hover: 0 2px 4px rgb(42 26 32 / 0.06), 0 16px 36px rgb(42 26 32 / 0.12);
+ }
+ 
++/*
++ * `inline` hace que Tailwind use directamente la variable --font-geist-sans que define
++ * next/font en <html> (ver layout.tsx), en lugar de copiar su valor.
++ */
+ @theme inline {
+-  --color-background: var(--background);
+-  --color-foreground: var(--foreground);
+-  --font-sans: var(--font-geist-sans);
+-  --font-mono: var(--font-geist-mono);
++  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
++  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+ }
+ 
+-@media (prefers-color-scheme: dark) {
+-  :root {
+-    --background: #0a0a0a;
+-    --foreground: #ededed;
+-  }
++/* La tienda usa un solo tema claro (fondo crema); evita que el navegador invierta colores. */
++:root {
++  color-scheme: light;
+ }
+ 
+ body {
+-  background: var(--background);
+-  color: var(--foreground);
+-  font-family: Arial, Helvetica, sans-serif;
++  background: var(--color-cream);
++  color: var(--color-ink);
++  font-family: var(--font-sans);
++}
++
++/*
++ * Foco visible para quienes navegan con teclado. Se aplica a TODOS los elementos
++ * interactivos para no tener que repetirlo en cada componente.
++ */
++:where(a, button, summary, input, select, textarea):focus-visible {
++  outline: 3px solid var(--color-brand-500);
++  outline-offset: 2px;
++}
++
++/* Quien pidió "reducir movimiento" en su sistema no ve animaciones. */
++@media (prefers-reduced-motion: reduce) {
++  *,
++  *::before,
++  *::after {
++    animation-duration: 0.01ms !important;
++    transition-duration: 0.01ms !important;
++  }
+ }
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index 9852c15..48d8b4d 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -1,5 +1,12 @@
+ import type { Metadata } from "next";
+ import { Geist, Geist_Mono } from "next/font/google";
++
++import { AnnouncementBar } from "@/components/layout/announcement-bar";
++import { SiteFooter } from "@/components/layout/site-footer";
++import { SiteHeader } from "@/components/layout/site-header";
++import { WhatsAppFloat } from "@/components/whatsapp/whatsapp-float";
++import { siteConfig } from "@/config/site";
++
+ import "./globals.css";
+ 
+ const geistSans = Geist({
+@@ -12,18 +19,54 @@ const geistMono = Geist_Mono({
+   subsets: ["latin"],
+ });
+ 
++/**
++ * Metadatos por defecto de TODO el sitio. Cada página puede sobrescribir `title`:
++ * la plantilla le agrega el nombre de la tienda ("Oso grande | Vikos Store").
++ */
+ export const metadata: Metadata = {
+-  title: "Create Next App",
+-  description: "Generated by create next app",
++  // Base para convertir en absolutas las URLs relativas de Open Graph.
++  metadataBase: new URL(siteConfig.url),
++  title: {
++    default: `${siteConfig.name} · ${siteConfig.tagline}`,
++    template: `%s | ${siteConfig.name}`,
++  },
++  description: siteConfig.description,
++  openGraph: {
++    type: "website",
++    locale: "es_CO",
++    siteName: siteConfig.name,
++  },
+ };
+ 
++/**
++ * LAYOUT RAÍZ: el marco común de todas las páginas.
++ *
++ *   franja de aviso → encabezado → [contenido de la página] → pie → botón flotante de WhatsApp
++ *
++ * Nada de aquí depende de la API, así que todo el marco es estático y carga al instante.
++ */
+ export default function RootLayout({ children }: LayoutProps<"/">) {
+   return (
+-    <html
+-      lang="en"
+-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+-    >
+-      <body className="min-h-full flex flex-col">{children}</body>
++    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
++      <body className="flex min-h-full flex-col">
++        {/* Enlace invisible que aparece al navegar con Tab: salta directo al contenido. */}
++        <a
++          href="#contenido"
++          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:font-semibold focus:shadow-card-hover"
++        >
++          Saltar al contenido
++        </a>
++
++        <AnnouncementBar />
++        <SiteHeader />
++
++        <main id="contenido" className="flex-1">
++          {children}
++        </main>
++
++        <SiteFooter />
++        <WhatsAppFloat />
++      </body>
+     </html>
+   );
+ }
+diff --git a/src/app/not-found.tsx b/src/app/not-found.tsx
+new file mode 100644
+index 0000000..6391b62
+--- /dev/null
++++ b/src/app/not-found.tsx
+@@ -0,0 +1,19 @@
++import { Container } from "@/components/ui/container";
++import { ButtonLink } from "@/components/ui/button";
++import { EmptyState } from "@/components/ui/empty-state";
++
++/**
++ * Pantalla 404. Next.js la muestra cuando una ruta no existe o cuando una página llama a
++ * `notFound()` (por ejemplo, un producto que no existe o está oculto).
++ */
++export default function NotFound() {
++  return (
++    <Container className="py-16 sm:py-24">
++      <EmptyState
++        title="No encontramos lo que buscas"
++        description="Puede que el enlace esté mal escrito o que este regalo ya no esté disponible."
++        action={<ButtonLink href="/productos">Ver la tienda</ButtonLink>}
++      />
++    </Container>
++  );
++}
+diff --git a/src/app/page.tsx b/src/app/page.tsx
+index 4dc2ed1..232736a 100644
+--- a/src/app/page.tsx
++++ b/src/app/page.tsx
+@@ -1,69 +1,34 @@
+-import Image from "next/image";
++import { Suspense } from "react";
+ 
+-export default function Home() {
++import { CategoryShowcase, CategoryShowcaseSkeleton } from "@/components/catalog/category-showcase";
++import { ProductShowcase, ProductShowcaseSkeleton } from "@/components/catalog/product-showcase";
++import { CtaBand } from "@/components/home/cta-band";
++import { Hero } from "@/components/home/hero";
++import { HowItWorks } from "@/components/home/how-it-works";
++
++/**
++ * PORTADA ( / )
++ *
++ * La página es una "carcasa" estática (Hero, Cómo funciona, banda final) que se sirve al
++ * instante. Las dos secciones que dependen de la API (categorías y productos) van cada una
++ * dentro de su <Suspense>: mientras llegan los datos se ve el esqueleto, y cada sección
++ * aparece sola en cuanto está lista, sin esperar a la otra.
++ */
++export default function HomePage() {
+   return (
+-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
+-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+-        <Image
+-          className="dark:invert h-5 w-[100px]"
+-          src="/next.svg"
+-          alt="Next.js logo"
+-          width={100}
+-          height={20}
+-          priority
+-        />
+-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
+-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
+-            To get started, edit the{" "}
+-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
+-              page.xddddddddddddd
+-            </code>{" "}
+-            file.
+-          </h1>
+-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+-            Looking for a starting point or more instructions? Head over to{" "}
+-            <a
+-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+-              className="font-medium text-zinc-950 dark:text-zinc-50"
+-            >
+-              Templates
+-            </a>{" "}
+-            or the{" "}
+-            <a
+-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+-              className="font-medium text-zinc-950 dark:text-zinc-50"
+-            >
+-              Learn
+-            </a>{" "}
+-            center.
+-          </p>
+-        </div>
+-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
+-          <a
+-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
+-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+-            target="_blank"
+-            rel="noopener noreferrer"
+-          >
+-            <Image
+-              className="dark:invert h-[14px] w-4"
+-              src="/vercel.svg"
+-              alt="Vercel logomark"
+-              width={16}
+-              height={14}
+-            />
+-            Deploy Now
+-          </a>
+-          <a
+-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
+-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+-            target="_blank"
+-            rel="noopener noreferrer"
+-          >
+-            Documentation
+-          </a>
+-        </div>
+-      </main>
+-    </div>
++    <>
++      <Hero />
++
++      <Suspense fallback={<CategoryShowcaseSkeleton />}>
++        <CategoryShowcase />
++      </Suspense>
++
++      <Suspense fallback={<ProductShowcaseSkeleton />}>
++        <ProductShowcase limit={8} />
++      </Suspense>
++
++      <HowItWorks />
++      <CtaBand />
++    </>
+   );
+ }
+diff --git a/src/components/catalog/catalog-browser.tsx b/src/components/catalog/catalog-browser.tsx
+new file mode 100644
+index 0000000..8300e49
+--- /dev/null
++++ b/src/components/catalog/catalog-browser.tsx
+@@ -0,0 +1,70 @@
++import type { Category, Product } from "@/types/catalog";
++
++import { Container } from "../ui/container";
++import { SectionHeading } from "../ui/section-heading";
++import { Skeleton } from "../ui/skeleton";
++import { CategoryChips } from "./category-chips";
++import { ProductGrid } from "./product-grid";
++import { ProductGridSkeleton } from "./product-grid-skeleton";
++
++interface CatalogBrowserProps {
++  /** Todas las categorías (para las píldoras de filtro). */
++  categories: Category[];
++  /** Los productos ya filtrados que se van a mostrar. */
++  products: Product[];
++  /** Categoría seleccionada; `undefined` = se está viendo toda la tienda. */
++  activeCategory?: Category;
++}
++
++/**
++ * Vista de catálogo: título + filtro por categoría + contador + cuadrícula.
++ *
++ * Es PRESENTACIONAL: no pide datos, solo dibuja lo que recibe. Por eso sirve igual para
++ * "toda la tienda" (/productos) y para una categoría (/categorias/<slug>): lo único que
++ * cambia es qué `products` y `activeCategory` se le pasan.
++ */
++export function CatalogBrowser({ categories, products, activeCategory }: CatalogBrowserProps) {
++  const count = products.length;
++
++  return (
++    <Container className="py-8 sm:py-12">
++      <SectionHeading
++        level={1}
++        eyebrow="Tienda"
++        title={activeCategory?.name ?? "Todos los regalos"}
++        description={activeCategory?.description ?? "Elige tu regalo favorito y pídelo por WhatsApp."}
++      />
++
++      <div className="mt-6">
++        <CategoryChips categories={categories} activeSlug={activeCategory?.slug} />
++      </div>
++
++      {/* `aria-live`: al cambiar de filtro, el lector de pantalla anuncia el nuevo total. */}
++      <p className="mt-6 text-sm text-muted" aria-live="polite">
++        {count} {count === 1 ? "regalo" : "regalos"}
++      </p>
++
++      <div className="mt-4">
++        <ProductGrid products={products} />
++      </div>
++    </Container>
++  );
++}
++
++/** Esqueleto de carga de `CatalogBrowser` (título, píldoras y cuadrícula). */
++export function CatalogBrowserSkeleton() {
++  return (
++    <Container className="py-8 sm:py-12">
++      <Skeleton className="h-10 w-72" />
++      <Skeleton className="mt-3 h-5 w-96 max-w-full" />
++      <div className="mt-6 flex gap-2">
++        {Array.from({ length: 5 }, (_, index) => (
++          <Skeleton key={index} className="h-10 w-24 rounded-full" />
++        ))}
++      </div>
++      <div className="mt-10">
++        <ProductGridSkeleton count={8} />
++      </div>
++    </Container>
++  );
++}
+diff --git a/src/components/catalog/category-card.tsx b/src/components/catalog/category-card.tsx
+new file mode 100644
+index 0000000..a51eaf8
+--- /dev/null
++++ b/src/components/catalog/category-card.tsx
+@@ -0,0 +1,46 @@
++import Link from "next/link";
++
++import type { Category } from "@/types/catalog";
++
++import { ArrowRightIcon, GiftIcon } from "../ui/icons";
++
++/**
++ * Degradados que se alternan entre tarjetas para dar variedad sin necesitar una foto por
++ * categoría. (Si en el futuro las categorías tienen imagen, se reemplaza aquí.)
++ */
++const gradients = [
++  "from-brand-100 to-brand-50",
++  "from-amber-100 to-orange-50",
++  "from-rose-100 to-pink-50",
++  "from-violet-100 to-fuchsia-50",
++] as const;
++
++interface CategoryCardProps {
++  category: Category;
++  /** Posición en la lista: se usa para elegir el degradado. */
++  index: number;
++}
++
++/** Tarjeta de una categoría para la portada: lleva a /categorias/<slug>. */
++export function CategoryCard({ category, index }: CategoryCardProps) {
++  return (
++    <Link
++      href={`/categorias/${category.slug}`}
++      className="group flex h-full flex-col overflow-hidden rounded-card border border-line bg-white shadow-card transition-shadow duration-200 hover:shadow-card-hover"
++    >
++      <div
++        className={`flex h-28 items-center justify-center bg-gradient-to-br text-4xl text-brand-600/80 ${gradients[index % gradients.length]}`}
++      >
++        <GiftIcon />
++      </div>
++      <div className="flex flex-1 flex-col gap-1 p-4">
++        <h3 className="font-bold text-ink">{category.name}</h3>
++        {category.description && <p className="line-clamp-2 text-sm text-muted">{category.description}</p>}
++        <span className="mt-auto flex items-center gap-1 pt-2 text-sm font-semibold text-brand-700">
++          Ver regalos
++          <ArrowRightIcon className="transition-transform group-hover:translate-x-1" />
++        </span>
++      </div>
++    </Link>
++  );
++}
+diff --git a/src/components/catalog/category-chips.tsx b/src/components/catalog/category-chips.tsx
+new file mode 100644
+index 0000000..92bbcbe
+--- /dev/null
++++ b/src/components/catalog/category-chips.tsx
+@@ -0,0 +1,55 @@
++import Link from "next/link";
++
++import { cn } from "@/lib/cn";
++import type { Category } from "@/types/catalog";
++
++interface CategoryChipsProps {
++  categories: Category[];
++  /** Slug de la categoría seleccionada, o `undefined` si se está viendo "Todas". */
++  activeSlug?: string;
++}
++
++/** Un botón-píldora que es un enlace. `active` resalta la opción elegida. */
++function Chip({ href, active, children }: { href: string; active: boolean; children: string }) {
++  return (
++    <Link
++      href={href}
++      // `aria-current` le dice a un lector de pantalla cuál opción está seleccionada.
++      aria-current={active ? "page" : undefined}
++      className={cn(
++        "inline-flex min-h-10 items-center whitespace-nowrap rounded-full border px-4 text-sm font-semibold transition-colors",
++        active
++          ? "border-brand-600 bg-brand-600 text-white"
++          : "border-line bg-white text-ink hover:border-brand-500 hover:text-brand-700",
++      )}
++    >
++      {children}
++    </Link>
++  );
++}
++
++/**
++ * Filtro por categoría. No usa JavaScript: cada opción es un ENLACE a su propia página
++ * (/productos o /categorias/<slug>), lo que además permite compartir y guardar cada filtro.
++ * En celular se desliza horizontalmente; en pantallas grandes se acomoda en varias filas.
++ */
++export function CategoryChips({ categories, activeSlug }: CategoryChipsProps) {
++  return (
++    <nav aria-label="Filtrar por categoría">
++      <ul className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
++        <li>
++          <Chip href="/productos" active={!activeSlug}>
++            Todas
++          </Chip>
++        </li>
++        {categories.map((category) => (
++          <li key={category.id}>
++            <Chip href={`/categorias/${category.slug}`} active={category.slug === activeSlug}>
++              {category.name}
++            </Chip>
++          </li>
++        ))}
++      </ul>
++    </nav>
++  );
++}
+diff --git a/src/components/catalog/category-showcase.tsx b/src/components/catalog/category-showcase.tsx
+new file mode 100644
+index 0000000..73a7fb0
+--- /dev/null
++++ b/src/components/catalog/category-showcase.tsx
+@@ -0,0 +1,55 @@
++import { getCategories } from "@/services/catalog-service";
++
++import { Container } from "../ui/container";
++import { SectionHeading } from "../ui/section-heading";
++import { Skeleton } from "../ui/skeleton";
++import { CategoryCard } from "./category-card";
++
++/**
++ * Sección de categorías de la portada.
++ *
++ * Es un componente ASYNC de servidor: pide los datos a la API él mismo. Por eso la página
++ * que lo usa debe envolverlo en <Suspense> (ver app/page.tsx) y darle `CategoryShowcaseSkeleton`
++ * como "plan B" mientras llegan los datos.
++ *
++ * Si no hay categorías, no pinta nada (ni siquiera el título).
++ */
++export async function CategoryShowcase() {
++  const categories = await getCategories();
++  if (categories.length === 0) return null;
++
++  return (
++    <section className="py-12 sm:py-16">
++      <Container>
++        <SectionHeading
++          eyebrow="Explora"
++          title="Encuentra el regalo ideal"
++          description="Elige una categoría y descubre detalles para cada ocasión."
++        />
++        <ul className="mt-8 grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
++          {categories.map((category, index) => (
++            <li key={category.id}>
++              <CategoryCard category={category} index={index} />
++            </li>
++          ))}
++        </ul>
++      </Container>
++    </section>
++  );
++}
++
++/** Esqueleto de carga de `CategoryShowcase`. */
++export function CategoryShowcaseSkeleton() {
++  return (
++    <section className="py-12 sm:py-16" aria-hidden="true">
++      <Container>
++        <Skeleton className="h-8 w-64" />
++        <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
++          {Array.from({ length: 4 }, (_, index) => (
++            <Skeleton key={index} className="h-48 rounded-card" />
++          ))}
++        </div>
++      </Container>
++    </section>
++  );
++}
+diff --git a/src/components/catalog/price-tag.tsx b/src/components/catalog/price-tag.tsx
+new file mode 100644
+index 0000000..9cc4c5e
+--- /dev/null
++++ b/src/components/catalog/price-tag.tsx
+@@ -0,0 +1,18 @@
++import { cn } from "@/lib/cn";
++import { formatPrice } from "@/lib/format-price";
++
++interface PriceTagProps {
++  /** Precio en pesos. */
++  price: number;
++  size?: "md" | "lg";
++  className?: string;
++}
++
++/** Muestra un precio con el formato de la tienda ("$ 89.900"). Un solo lugar = un solo estilo. */
++export function PriceTag({ price, size = "md", className }: PriceTagProps) {
++  return (
++    <p className={cn("font-bold text-brand-700", size === "lg" ? "text-3xl" : "text-lg", className)}>
++      {formatPrice(price)}
++    </p>
++  );
++}
+diff --git a/src/components/catalog/product-card.tsx b/src/components/catalog/product-card.tsx
+new file mode 100644
+index 0000000..4110c37
+--- /dev/null
++++ b/src/components/catalog/product-card.tsx
+@@ -0,0 +1,55 @@
++import Link from "next/link";
++
++import type { Product } from "@/types/catalog";
++
++import { ProductWhatsAppButton } from "../whatsapp/product-whatsapp-button";
++import { PriceTag } from "./price-tag";
++import { ProductImage } from "./product-image";
++
++interface ProductCardProps {
++  product: Product;
++  /** `true` para las primeras tarjetas visibles al cargar: sus fotos se descargan primero. */
++  priority?: boolean;
++}
++
++/**
++ * Tarjeta de un producto en las cuadrículas: foto, nombre, precio y botón de WhatsApp.
++ *
++ * Accesibilidad: la foto y el nombre llevan al mismo sitio. Para que un lector de pantalla
++ * no lea dos enlaces iguales, el enlace de la foto se oculta (`aria-hidden`) y se saca del
++ * orden del teclado (`tabIndex={-1}`); el del nombre es el enlace "oficial". Con el mouse
++ * se puede pulsar cualquiera de los dos.
++ */
++export function ProductCard({ product, priority }: ProductCardProps) {
++  const href = `/productos/${product.slug}`;
++
++  return (
++    <article className="group flex flex-col overflow-hidden rounded-card border border-line bg-white shadow-card transition-shadow duration-200 hover:shadow-card-hover">
++      <Link href={href} tabIndex={-1} aria-hidden="true">
++        <ProductImage
++          src={product.imageUrl}
++          alt=""
++          priority={priority}
++          className="aspect-square"
++          imageClassName="transition-transform duration-300 group-hover:scale-105"
++        />
++      </Link>
++
++      <div className="flex flex-1 flex-col gap-2 p-3 sm:p-4">
++        <h3 className="line-clamp-2 min-h-[2.75rem] text-sm font-semibold leading-snug text-ink sm:text-base">
++          <Link href={href} className="hover:text-brand-700">
++            {product.name}
++          </Link>
++        </h3>
++
++        <PriceTag price={product.price} />
++
++        {/* `mt-auto` empuja el botón al fondo: todos quedan alineados aunque los nombres tengan distinto largo. */}
++        <div className="mt-auto pt-1">
++          {/* `px-3` en celular: las tarjetas son estrechas (2 por fila) y el texto debe caber en una línea. */}
++          <ProductWhatsAppButton product={product} label="Pedir ahora" size="sm" fullWidth className="px-3 sm:px-4" />
++        </div>
++      </div>
++    </article>
++  );
++}
+diff --git a/src/components/catalog/product-detail.tsx b/src/components/catalog/product-detail.tsx
+new file mode 100644
+index 0000000..c97c648
+--- /dev/null
++++ b/src/components/catalog/product-detail.tsx
+@@ -0,0 +1,101 @@
++import Link from "next/link";
++
++import type { Category, Product } from "@/types/catalog";
++
++import { ProductWhatsAppButton } from "../whatsapp/product-whatsapp-button";
++import { Badge } from "../ui/badge";
++import { Breadcrumb, type BreadcrumbItem } from "../ui/breadcrumb";
++import { ButtonLink } from "../ui/button";
++import { Container } from "../ui/container";
++import { Skeleton } from "../ui/skeleton";
++import { PriceTag } from "./price-tag";
++import { ProductImage } from "./product-image";
++
++interface ProductDetailProps {
++  product: Product;
++  /** Categoría del producto, si tiene una visible. */
++  category: Category | null;
++}
++
++/**
++ * Ficha completa de un producto: foto grande a la izquierda; nombre, precio, descripción
++ * y botón de WhatsApp a la derecha (debajo en celular).
++ *
++ * Presentacional: recibe los datos ya listos, no llama a la API.
++ */
++export function ProductDetail({ product, category }: ProductDetailProps) {
++  // Migas de pan: la categoría solo aparece si el producto tiene una visible.
++  const crumbs: BreadcrumbItem[] = [
++    { label: "Inicio", href: "/" },
++    { label: "Tienda", href: "/productos" },
++    ...(category ? [{ label: category.name, href: `/categorias/${category.slug}` }] : []),
++    { label: product.name },
++  ];
++
++  return (
++    <Container className="py-8 sm:py-12">
++      <Breadcrumb items={crumbs} />
++
++      <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:gap-14">
++        {/* Esta es la imagen principal de la página: `priority` para que cargue primero. */}
++        <ProductImage
++          src={product.imageUrl}
++          alt={product.name}
++          priority
++          className="aspect-square rounded-card border border-line shadow-card"
++        />
++
++        <div className="flex flex-col">
++          {category && (
++            <Link href={`/categorias/${category.slug}`} className="mb-3 self-start">
++              <Badge>{category.name}</Badge>
++            </Link>
++          )}
++
++          <h1 className="text-3xl font-bold tracking-tight text-ink sm:text-4xl">{product.name}</h1>
++          <PriceTag price={product.price} size="lg" className="mt-3" />
++
++          {/* `whitespace-pre-line` respeta los saltos de línea que escribió el administrador. */}
++          {product.description && (
++            <p className="mt-6 whitespace-pre-line text-base leading-relaxed text-muted">
++              {product.description}
++            </p>
++          )}
++
++          <div className="mt-8 space-y-3">
++            <ProductWhatsAppButton product={product} size="lg" fullWidth />
++            <p className="text-center text-sm text-muted">
++              Al pulsar se abrirá WhatsApp con el nombre, el precio y el enlace de este regalo ya escritos.
++            </p>
++          </div>
++
++          <div className="mt-6">
++            {/* `-ml-5` compensa el relleno del botón para que el texto quede alineado con el resto. */}
++            <ButtonLink href={category ? `/categorias/${category.slug}` : "/productos"} variant="ghost" className="-ml-5">
++              ← Seguir viendo regalos
++            </ButtonLink>
++          </div>
++        </div>
++      </div>
++    </Container>
++  );
++}
++
++/** Esqueleto de carga de `ProductDetail`. */
++export function ProductDetailSkeleton() {
++  return (
++    <Container className="py-8 sm:py-12">
++      <Skeleton className="h-5 w-72" />
++      <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:gap-14">
++        <Skeleton className="aspect-square rounded-card" />
++        <div className="space-y-4">
++          <Skeleton className="h-6 w-28 rounded-full" />
++          <Skeleton className="h-10 w-3/4" />
++          <Skeleton className="h-9 w-40" />
++          <Skeleton className="h-24 w-full" />
++          <Skeleton className="h-12 w-full rounded-full" />
++        </div>
++      </div>
++    </Container>
++  );
++}
+diff --git a/src/components/catalog/product-grid-skeleton.tsx b/src/components/catalog/product-grid-skeleton.tsx
+new file mode 100644
+index 0000000..495cb6b
+--- /dev/null
++++ b/src/components/catalog/product-grid-skeleton.tsx
+@@ -0,0 +1,23 @@
++import { Skeleton } from "../ui/skeleton";
++
++/** Esqueleto de carga con la misma forma que `ProductGrid`: evita que la página "salte" al cargar. */
++export function ProductGridSkeleton({ count = 8 }: { count?: number }) {
++  return (
++    <div
++      role="status"
++      aria-label="Cargando productos"
++      className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4"
++    >
++      {Array.from({ length: count }, (_, index) => (
++        <div key={index} className="overflow-hidden rounded-card border border-line bg-white">
++          <Skeleton className="aspect-square rounded-none" />
++          <div className="space-y-3 p-4">
++            <Skeleton className="h-4 w-3/4" />
++            <Skeleton className="h-5 w-1/3" />
++            <Skeleton className="h-10 w-full rounded-full" />
++          </div>
++        </div>
++      ))}
++    </div>
++  );
++}
+diff --git a/src/components/catalog/product-grid.tsx b/src/components/catalog/product-grid.tsx
+new file mode 100644
+index 0000000..2e87874
+--- /dev/null
++++ b/src/components/catalog/product-grid.tsx
+@@ -0,0 +1,37 @@
++import type { Product } from "@/types/catalog";
++
++import { ButtonLink } from "../ui/button";
++import { EmptyState } from "../ui/empty-state";
++import { ProductCard } from "./product-card";
++
++interface ProductGridProps {
++  products: Product[];
++}
++
++/** Cuadrícula responsive de productos: 2 columnas en celular, 3 en tablet y 4 en escritorio. */
++export function ProductGrid({ products }: ProductGridProps) {
++  if (products.length === 0) {
++    return (
++      <EmptyState
++        title="Aún no hay productos aquí"
++        description="Estamos preparando nuevos regalos. Mientras tanto, explora las demás categorías."
++        action={
++          <ButtonLink href="/productos" variant="secondary">
++            Ver toda la tienda
++          </ButtonLink>
++        }
++      />
++    );
++  }
++
++  return (
++    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
++      {products.map((product, index) => (
++        <li key={product.id}>
++          {/* Solo las 4 primeras (las que se ven sin hacer scroll) cargan con prioridad. */}
++          <ProductCard product={product} priority={index < 4} />
++        </li>
++      ))}
++    </ul>
++  );
++}
+diff --git a/src/components/catalog/product-image.tsx b/src/components/catalog/product-image.tsx
+new file mode 100644
+index 0000000..fed4f2d
+--- /dev/null
++++ b/src/components/catalog/product-image.tsx
+@@ -0,0 +1,50 @@
++import Image from "next/image";
++
++import { cn } from "@/lib/cn";
++
++import { GiftIcon } from "../ui/icons";
++
++interface ProductImageProps {
++  /** URL de la foto, o `null` si el producto no tiene. */
++  src: string | null;
++  /** Texto alternativo: describe la imagen para lectores de pantalla y si no carga. */
++  alt: string;
++  /** Marcar `true` SOLO para la imagen principal visible al abrir la página (carga prioritaria). */
++  priority?: boolean;
++  /** Clases del contenedor: aquí se define la proporción (ej. "aspect-square"). */
++  className?: string;
++  /** Clases de la <img> (ej. el zoom al pasar el mouse). */
++  imageClassName?: string;
++}
++
++/**
++ * Imagen de un producto con "plan B" cuando no tiene foto.
++ *
++ * - El contenedor es relativo y la imagen lo llena (`fill` + `object-cover`), así todas las
++ *   fotos quedan del mismo tamaño aunque originalmente sean distintas.
++ * - `unoptimized`: las URLs de las fotos las escribe el administrador y pueden venir de
++ *   cualquier dominio. Con esta opción Next.js las sirve tal cual, sin exigir registrar cada
++ *   dominio en next.config. (Si algún día las fotos se alojan en un dominio propio, se puede
++ *   quitar y configurar `images.remotePatterns` para optimizarlas automáticamente.)
++ */
++export function ProductImage({ src, alt, priority, className, imageClassName }: ProductImageProps) {
++  return (
++    <div className={cn("relative overflow-hidden bg-brand-50", className)}>
++      {src ? (
++        <Image
++          src={src}
++          alt={alt}
++          fill
++          unoptimized
++          priority={priority}
++          className={cn("object-cover", imageClassName)}
++        />
++      ) : (
++        // Sin foto: degradado con una caja de regalo (decorativo, el nombre ya está en el texto).
++        <div className="flex size-full items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 text-5xl text-brand-500/70">
++          <GiftIcon aria-hidden="true" />
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/src/components/catalog/product-showcase.tsx b/src/components/catalog/product-showcase.tsx
+new file mode 100644
+index 0000000..676c908
+--- /dev/null
++++ b/src/components/catalog/product-showcase.tsx
+@@ -0,0 +1,56 @@
++import { getProducts } from "@/services/catalog-service";
++
++import { ButtonLink } from "../ui/button";
++import { Container } from "../ui/container";
++import { SectionHeading } from "../ui/section-heading";
++import { Skeleton } from "../ui/skeleton";
++import { ProductGrid } from "./product-grid";
++import { ProductGridSkeleton } from "./product-grid-skeleton";
++
++interface ProductShowcaseProps {
++  /** Cuántos productos mostrar (la API devuelve todos; aquí se toman los primeros). */
++  limit?: number;
++}
++
++/**
++ * Sección de productos destacados de la portada (async: pide los datos a la API).
++ * Debe usarse dentro de <Suspense> con `ProductShowcaseSkeleton` como respaldo.
++ */
++export async function ProductShowcase({ limit = 8 }: ProductShowcaseProps) {
++  const products = await getProducts();
++  if (products.length === 0) return null;
++
++  return (
++    <section className="py-12 sm:py-16">
++      <Container>
++        <SectionHeading
++          eyebrow="Nuestra tienda"
++          title="Regalos para sorprender"
++          description="Algunos de nuestros detalles favoritos. Pídelos por WhatsApp en un momento."
++          action={
++            <ButtonLink href="/productos" variant="secondary">
++              Ver toda la tienda
++            </ButtonLink>
++          }
++        />
++        <div className="mt-8">
++          <ProductGrid products={products.slice(0, limit)} />
++        </div>
++      </Container>
++    </section>
++  );
++}
++
++/** Esqueleto de carga de `ProductShowcase`. */
++export function ProductShowcaseSkeleton() {
++  return (
++    <section className="py-12 sm:py-16">
++      <Container>
++        <Skeleton className="h-8 w-72" />
++        <div className="mt-8">
++          <ProductGridSkeleton count={8} />
++        </div>
++      </Container>
++    </section>
++  );
++}
+diff --git a/src/components/home/cta-band.tsx b/src/components/home/cta-band.tsx
+new file mode 100644
+index 0000000..211d68b
+--- /dev/null
++++ b/src/components/home/cta-band.tsx
+@@ -0,0 +1,22 @@
++import { Container } from "../ui/container";
++import { ContactWhatsAppButton } from "../whatsapp/contact-whatsapp-button";
++
++/** Banda final de la portada con una invitación a escribir por WhatsApp. */
++export function CtaBand() {
++  return (
++    <section className="py-12 sm:py-16">
++      <Container>
++        <div className="flex flex-col items-center gap-5 rounded-[2rem] bg-gradient-to-br from-brand-600 to-brand-700 px-6 py-12 text-center text-white sm:px-12">
++          <h2 className="max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">
++            ¿No encuentras lo que buscas?
++          </h2>
++          <p className="max-w-xl text-white/90">
++            Cuéntanos la ocasión y el presupuesto, y te ayudamos a armar el regalo ideal.
++          </p>
++          {/* Variante "secundario" (fondo blanco) para que resalte sobre el fondo rosa. */}
++          <ContactWhatsAppButton variant="secondary" size="lg" />
++        </div>
++      </Container>
++    </section>
++  );
++}
+diff --git a/src/components/home/hero.tsx b/src/components/home/hero.tsx
+new file mode 100644
+index 0000000..a3f891b
+--- /dev/null
++++ b/src/components/home/hero.tsx
+@@ -0,0 +1,56 @@
++import { siteConfig } from "@/config/site";
++
++import { ButtonLink } from "../ui/button";
++import { Container } from "../ui/container";
++import { GiftIcon } from "../ui/icons";
++import { ContactWhatsAppButton } from "../whatsapp/contact-whatsapp-button";
++
++/**
++ * Bloque principal de la portada: titular, descripción y dos botones de acción
++ * (ver la tienda / escribir por WhatsApp). Todos los textos salen de `siteConfig`.
++ * La ilustración de la derecha es puro CSS (sin imágenes), así carga al instante.
++ */
++export function Hero() {
++  return (
++    <section className="relative overflow-hidden">
++      {/* Manchas de color decorativas; `aria-hidden` porque no aportan información. */}
++      <div aria-hidden="true" className="absolute -left-24 -top-24 size-80 rounded-full bg-brand-100 blur-3xl" />
++      <div aria-hidden="true" className="absolute -bottom-24 right-0 size-96 rounded-full bg-gold/20 blur-3xl" />
++
++      <Container className="relative grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-2">
++        <div>
++          <p className="mb-4 inline-flex rounded-full bg-white px-4 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-brand-700 shadow-card">
++            {siteConfig.name}
++          </p>
++          <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl lg:text-6xl">
++            {siteConfig.tagline}
++          </h1>
++          <p className="mt-5 max-w-xl text-lg text-muted">{siteConfig.description}</p>
++
++          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
++            <ButtonLink href="/productos" size="lg">
++              Ver la tienda
++            </ButtonLink>
++            <ContactWhatsAppButton size="lg" />
++          </div>
++        </div>
++
++        {/* Ilustración: tarjeta central con regalo y "burbujas" flotantes alrededor. */}
++        <div aria-hidden="true" className="relative mx-auto hidden size-80 lg:block">
++          <div className="absolute inset-6 flex items-center justify-center rounded-[2.5rem] bg-gradient-to-br from-brand-500 to-brand-700 text-9xl text-white shadow-card-hover [transform:rotate(-6deg)]">
++            <GiftIcon />
++          </div>
++          <span className="absolute -right-2 top-4 flex size-16 items-center justify-center rounded-2xl bg-white text-3xl shadow-card">
++            🎈
++          </span>
++          <span className="absolute -left-4 bottom-10 flex size-16 items-center justify-center rounded-2xl bg-white text-3xl shadow-card">
++            💐
++          </span>
++          <span className="absolute bottom-0 right-8 flex size-14 items-center justify-center rounded-2xl bg-gold text-2xl shadow-card">
++            ✨
++          </span>
++        </div>
++      </Container>
++    </section>
++  );
++}
+diff --git a/src/components/home/how-it-works.tsx b/src/components/home/how-it-works.tsx
+new file mode 100644
+index 0000000..1ad824f
+--- /dev/null
++++ b/src/components/home/how-it-works.tsx
+@@ -0,0 +1,44 @@
++import { Container } from "../ui/container";
++import { SectionHeading } from "../ui/section-heading";
++
++/**
++ * Los pasos para pedir. Están en un arreglo: para agregar, quitar o cambiar un paso
++ * solo se edita esta lista, no el diseño.
++ */
++const steps = [
++  {
++    title: "Elige tu regalo",
++    description: "Explora la tienda y encuentra el detalle perfecto para esa persona especial.",
++  },
++  {
++    title: "Pídelo por WhatsApp",
++    description: "Pulsa el botón y se abrirá WhatsApp con tu pedido ya escrito. Solo envía el mensaje.",
++  },
++  {
++    title: "Recíbelo",
++    description: "Te confirmamos la disponibilidad y coordinamos contigo la entrega.",
++  },
++] as const;
++
++/** Sección "Cómo funciona": 3 pasos numerados. Es estática (no pide datos). */
++export function HowItWorks() {
++  return (
++    <section className="py-12 sm:py-16">
++      <Container>
++        <SectionHeading eyebrow="Así de fácil" title="Pedir tu regalo toma un minuto" />
++        {/* <ol>: es una lista ORDENADA (los pasos tienen secuencia). */}
++        <ol className="mt-8 grid gap-4 md:grid-cols-3 md:gap-6">
++          {steps.map((step, index) => (
++            <li key={step.title} className="rounded-card border border-line bg-white p-6 shadow-card">
++              <span className="mb-4 flex size-10 items-center justify-center rounded-full bg-brand-600 text-lg font-bold text-white">
++                {index + 1}
++              </span>
++              <h3 className="text-lg font-bold text-ink">{step.title}</h3>
++              <p className="mt-1 text-sm text-muted">{step.description}</p>
++            </li>
++          ))}
++        </ol>
++      </Container>
++    </section>
++  );
++}
+diff --git a/src/components/layout/announcement-bar.tsx b/src/components/layout/announcement-bar.tsx
+new file mode 100644
+index 0000000..0ca5414
+--- /dev/null
++++ b/src/components/layout/announcement-bar.tsx
+@@ -0,0 +1,12 @@
++import { siteConfig } from "@/config/site";
++
++/** Franja superior con un aviso corto (ej. "Entregas a domicilio en Bogotá"). Se edita en siteConfig. */
++export function AnnouncementBar() {
++  if (!siteConfig.announcement) return null;
++
++  return (
++    <div className="bg-brand-700 px-4 py-2 text-center text-xs font-semibold tracking-wide text-white sm:text-sm">
++      {siteConfig.announcement}
++    </div>
++  );
++}
+diff --git a/src/components/layout/brand-logo.tsx b/src/components/layout/brand-logo.tsx
+new file mode 100644
+index 0000000..32d8e9b
+--- /dev/null
++++ b/src/components/layout/brand-logo.tsx
+@@ -0,0 +1,20 @@
++import Link from "next/link";
++
++import { siteConfig } from "@/config/site";
++
++import { GiftIcon } from "../ui/icons";
++
++/**
++ * Logo de la tienda: un icono + el nombre. Es un enlace a la portada.
++ * Cuando haya un logo real (imagen), se reemplaza SOLO aquí y cambia en todo el sitio.
++ */
++export function BrandLogo() {
++  return (
++    <Link href="/" className="flex items-center gap-2.5" aria-label={`${siteConfig.name}, ir al inicio`}>
++      <span className="flex size-10 items-center justify-center rounded-xl bg-brand-600 text-xl text-white">
++        <GiftIcon />
++      </span>
++      <span className="text-lg font-extrabold tracking-tight text-ink">{siteConfig.name}</span>
++    </Link>
++  );
++}
+diff --git a/src/components/layout/mobile-nav.tsx b/src/components/layout/mobile-nav.tsx
+new file mode 100644
+index 0000000..02ef178
+--- /dev/null
++++ b/src/components/layout/mobile-nav.tsx
+@@ -0,0 +1,68 @@
++"use client";
++
++/**
++ * ============================================================================
++ * MENÚ MÓVIL (único componente de cliente del sitio)
++ * ============================================================================
++ * Necesita JavaScript en el navegador porque tiene ESTADO (abierto / cerrado), por eso
++ * lleva "use client". Todo lo demás de la tienda se renderiza en el servidor.
++ *
++ * Para no meter más código del necesario al navegador, el contenido que NO depende del
++ * estado (el botón de WhatsApp) llega desde el servidor como `children`.
++ */
++import Link from "next/link";
++import { useState, type ReactNode } from "react";
++
++import { CloseIcon, MenuIcon } from "../ui/icons";
++
++interface MobileNavProps {
++  links: ReadonlyArray<{ label: string; href: string }>;
++  /** Contenido extra al final del menú (renderizado en el servidor). */
++  children?: ReactNode;
++}
++
++export function MobileNav({ links, children }: MobileNavProps) {
++  const [open, setOpen] = useState(false);
++  const close = () => setOpen(false);
++
++  return (
++    // Escape cierra el menú (comportamiento esperado por quien navega con teclado).
++    <div className="md:hidden" onKeyDown={(event) => event.key === "Escape" && close()}>
++      <button
++        type="button"
++        onClick={() => setOpen((value) => !value)}
++        aria-expanded={open}
++        aria-controls="menu-movil"
++        aria-label={open ? "Cerrar menú" : "Abrir menú"}
++        className="flex size-11 items-center justify-center rounded-full text-2xl text-ink hover:bg-brand-50"
++      >
++        {open ? <CloseIcon /> : <MenuIcon />}
++      </button>
++
++      {open && (
++        // `absolute top-full`: el panel cuelga justo debajo del encabezado (que es `sticky`).
++        <nav
++          id="menu-movil"
++          aria-label="Menú móvil"
++          className="absolute inset-x-0 top-full border-b border-line bg-cream shadow-card"
++        >
++          <ul className="mx-auto max-w-7xl space-y-1 px-4 py-3">
++            {links.map((link) => (
++              <li key={link.href}>
++                {/* Al navegar, el layout NO se vuelve a montar: hay que cerrar el menú a mano. */}
++                <Link
++                  href={link.href}
++                  onClick={close}
++                  className="block rounded-lg px-3 py-3 font-semibold text-ink hover:bg-brand-50"
++                >
++                  {link.label}
++                </Link>
++              </li>
++            ))}
++            {children && <li className="pt-2">{children}</li>}
++          </ul>
++        </nav>
++      )}
++    </div>
++  );
++}
+diff --git a/src/components/layout/site-footer.tsx b/src/components/layout/site-footer.tsx
+new file mode 100644
+index 0000000..8a26087
+--- /dev/null
++++ b/src/components/layout/site-footer.tsx
+@@ -0,0 +1,53 @@
++import Link from "next/link";
++
++import { siteConfig } from "@/config/site";
++
++import { Container } from "../ui/container";
++import { ContactWhatsAppButton } from "../whatsapp/contact-whatsapp-button";
++import { BrandLogo } from "./brand-logo";
++
++/**
++ * Pie de página: marca, enlaces y contacto.
++ *
++ * Nota: el año del copyright no se calcula con `new Date()` a propósito. Con Cache Components,
++ * leer la hora actual en un componente estático rompe el prerenderizado; un texto fijo no.
++ */
++export function SiteFooter() {
++  return (
++    <footer className="mt-16 border-t border-line bg-white">
++      <Container className="grid gap-10 py-12 md:grid-cols-3">
++        <div className="space-y-3">
++          <BrandLogo />
++          <p className="max-w-xs text-sm text-muted">{siteConfig.description}</p>
++        </div>
++
++        <nav aria-label="Pie de página">
++          <h2 className="text-sm font-bold uppercase tracking-wider text-ink">Navegación</h2>
++          <ul className="mt-3 space-y-2">
++            {siteConfig.nav.map((link) => (
++              <li key={link.href}>
++                <Link href={link.href} className="text-sm text-muted hover:text-brand-700 hover:underline">
++                  {link.label}
++                </Link>
++              </li>
++            ))}
++          </ul>
++        </nav>
++
++        <div>
++          <h2 className="text-sm font-bold uppercase tracking-wider text-ink">¿Hablamos?</h2>
++          <p className="mt-3 text-sm text-muted">
++            Cuéntanos qué quieres regalar y te ayudamos a elegir.
++          </p>
++          <div className="mt-4">
++            <ContactWhatsAppButton />
++          </div>
++        </div>
++      </Container>
++
++      <div className="border-t border-line py-5 text-center text-xs text-muted">
++        © {siteConfig.name}. Todos los derechos reservados.
++      </div>
++    </footer>
++  );
++}
+diff --git a/src/components/layout/site-header.tsx b/src/components/layout/site-header.tsx
+index e69de29..d58b687 100644
+--- a/src/components/layout/site-header.tsx
++++ b/src/components/layout/site-header.tsx
+@@ -0,0 +1,48 @@
++import Link from "next/link";
++
++import { siteConfig } from "@/config/site";
++
++import { Container } from "../ui/container";
++import { ContactWhatsAppButton } from "../whatsapp/contact-whatsapp-button";
++import { BrandLogo } from "./brand-logo";
++import { MobileNav } from "./mobile-nav";
++
++/**
++ * Encabezado fijo (se queda arriba al hacer scroll).
++ *  - Escritorio: logo + menú + botón de WhatsApp.
++ *  - Celular: logo + botón de hamburguesa (MobileNav).
++ * Los enlaces salen de `siteConfig.nav`.
++ */
++export function SiteHeader() {
++  return (
++    <header className="sticky top-0 z-30 border-b border-line bg-cream/90 backdrop-blur">
++      <Container className="flex h-16 items-center justify-between gap-4">
++        <BrandLogo />
++
++        <nav aria-label="Principal" className="hidden md:block">
++          <ul className="flex items-center gap-1">
++            {siteConfig.nav.map((link) => (
++              <li key={link.href}>
++                <Link
++                  href={link.href}
++                  className="rounded-full px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-brand-50 hover:text-brand-700"
++                >
++                  {link.label}
++                </Link>
++              </li>
++            ))}
++          </ul>
++        </nav>
++
++        <div className="flex items-center gap-2">
++          <div className="hidden sm:block">
++            <ContactWhatsAppButton size="sm" label="WhatsApp" />
++          </div>
++          <MobileNav links={siteConfig.nav}>
++            <ContactWhatsAppButton fullWidth />
++          </MobileNav>
++        </div>
++      </Container>
++    </header>
++  );
++}
+diff --git a/src/components/page-content/all-products-content.tsx b/src/components/page-content/all-products-content.tsx
+new file mode 100644
+index 0000000..092eacf
+--- /dev/null
++++ b/src/components/page-content/all-products-content.tsx
+@@ -0,0 +1,13 @@
++import { getCategories, getProducts } from "@/services/catalog-service";
++
++import { CatalogBrowser } from "../catalog/catalog-browser";
++
++/**
++ * Carga los datos de /productos (toda la tienda) y los entrega a la vista.
++ * Las dos peticiones (categorías y productos) se hacen A LA VEZ con Promise.all:
++ * tardan lo que tarde la más lenta, no la suma de ambas.
++ */
++export async function AllProductsContent() {
++  const [categories, products] = await Promise.all([getCategories(), getProducts()]);
++  return <CatalogBrowser categories={categories} products={products} />;
++}
+diff --git a/src/components/page-content/category-content.tsx b/src/components/page-content/category-content.tsx
+new file mode 100644
+index 0000000..3d66c14
+--- /dev/null
++++ b/src/components/page-content/category-content.tsx
+@@ -0,0 +1,27 @@
++import { notFound } from "next/navigation";
++
++import { getCategories, getCategory, getProducts } from "@/services/catalog-service";
++
++import { CatalogBrowser } from "../catalog/catalog-browser";
++
++interface CategoryContentProps {
++  /**
++   * Los parámetros de la URL llegan como una PROMESA y se esperan AQUÍ, dentro del bloque
++   * que va en <Suspense>. (Con Cache Components, leer `params` es un dato "de petición":
++   * si se esperara en la página misma, esta no podría prerenderizarse.)
++   */
++  paramsPromise: Promise<{ slug: string }>;
++}
++
++/** Carga los datos de /categorias/<slug>: la categoría y solo sus productos. */
++export async function CategoryContent({ paramsPromise }: CategoryContentProps) {
++  const { slug } = await paramsPromise;
++
++  // Primero la categoría: si no existe (o está desactivada) mostramos la página 404.
++  const category = await getCategory(slug);
++  if (!category) notFound();
++
++  const [categories, products] = await Promise.all([getCategories(), getProducts(category.id)]);
++
++  return <CatalogBrowser categories={categories} products={products} activeCategory={category} />;
++}
+diff --git a/src/components/page-content/product-content.tsx b/src/components/page-content/product-content.tsx
+new file mode 100644
+index 0000000..0f94323
+--- /dev/null
++++ b/src/components/page-content/product-content.tsx
+@@ -0,0 +1,23 @@
++import { notFound } from "next/navigation";
++
++import { getCategory, getProduct } from "@/services/catalog-service";
++
++import { ProductDetail } from "../catalog/product-detail";
++
++interface ProductContentProps {
++  /** Promesa con los parámetros de la URL (ver explicación en `CategoryContent`). */
++  paramsPromise: Promise<{ slug: string }>;
++}
++
++/** Carga los datos de /productos/<slug>: el producto y, si tiene, su categoría. */
++export async function ProductContent({ paramsPromise }: ProductContentProps) {
++  const { slug } = await paramsPromise;
++
++  // Producto inexistente, oculto o de una categoría desactivada → página 404.
++  const product = await getProduct(slug);
++  if (!product) notFound();
++
++  const category = product.categoryId ? await getCategory(product.categoryId) : null;
++
++  return <ProductDetail product={product} category={category} />;
++}
+diff --git a/src/components/ui/badge.tsx b/src/components/ui/badge.tsx
+new file mode 100644
+index 0000000..0199a4c
+--- /dev/null
++++ b/src/components/ui/badge.tsx
+@@ -0,0 +1,22 @@
++import type { ReactNode } from "react";
++
++import { cn } from "@/lib/cn";
++
++interface BadgeProps {
++  children: ReactNode;
++  className?: string;
++}
++
++/** Etiqueta pequeña redondeada (por ejemplo, el nombre de la categoría de un producto). */
++export function Badge({ children, className }: BadgeProps) {
++  return (
++    <span
++      className={cn(
++        "inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700",
++        className,
++      )}
++    >
++      {children}
++    </span>
++  );
++}
+diff --git a/src/components/ui/breadcrumb.tsx b/src/components/ui/breadcrumb.tsx
+new file mode 100644
+index 0000000..56186d5
+--- /dev/null
++++ b/src/components/ui/breadcrumb.tsx
+@@ -0,0 +1,43 @@
++import Link from "next/link";
++import { Fragment } from "react";
++
++import { ChevronRightIcon } from "./icons";
++
++export interface BreadcrumbItem {
++  label: string;
++  /** Sin `href` = página actual (no es un enlace). */
++  href?: string;
++}
++
++/**
++ * Migas de pan: "Inicio › Tienda › Peluches › Oso grande".
++ * Ayuda a ubicarse y a volver atrás. El último elemento se marca como página actual.
++ */
++export function Breadcrumb({ items }: { items: BreadcrumbItem[] }) {
++  return (
++    <nav aria-label="Migas de pan" className="text-sm text-muted">
++      <ol className="flex flex-wrap items-center gap-1.5">
++        {items.map((item, index) => (
++          <Fragment key={`${item.label}-${index}`}>
++            {index > 0 && (
++              <li aria-hidden="true" className="flex items-center">
++                <ChevronRightIcon width="1em" height="1em" />
++              </li>
++            )}
++            <li>
++              {item.href ? (
++                <Link href={item.href} className="hover:text-brand-700 hover:underline">
++                  {item.label}
++                </Link>
++              ) : (
++                <span aria-current="page" className="font-medium text-ink">
++                  {item.label}
++                </span>
++              )}
++            </li>
++          </Fragment>
++        ))}
++      </ol>
++    </nav>
++  );
++}
+diff --git a/src/components/ui/button.tsx b/src/components/ui/button.tsx
+index e69de29..cbeb438 100644
+--- a/src/components/ui/button.tsx
++++ b/src/components/ui/button.tsx
+@@ -0,0 +1,91 @@
++import Link from "next/link";
++import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
++
++import { cn } from "@/lib/cn";
++
++/**
++ * ============================================================================
++ * BOTONES
++ * ============================================================================
++ * Un solo lugar define cómo se ve un botón. Hay dos componentes que comparten el mismo
++ * aspecto a través de `buttonStyles`:
++ *
++ *   <Button>      → un <button> real (para acciones: enviar, abrir un menú...).
++ *   <ButtonLink>  → un enlace con aspecto de botón (para navegar a otra página o a WhatsApp).
++ *
++ * Regla de accesibilidad: lo que NAVEGA es un enlace; lo que EJECUTA algo es un botón.
++ */
++
++type Variant = "primary" | "secondary" | "whatsapp" | "ghost";
++type Size = "sm" | "md" | "lg";
++
++interface StyleOptions {
++  variant?: Variant;
++  size?: Size;
++  /** Ocupa todo el ancho disponible. */
++  fullWidth?: boolean;
++  className?: string;
++}
++
++/** Clases comunes a todos los botones. */
++const base =
++  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold " +
++  "transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50";
++
++/** Colores según la variante. */
++const variants: Record<Variant, string> = {
++  primary: "bg-brand-600 text-white hover:bg-brand-700",
++  secondary: "border border-brand-600 bg-white text-brand-700 hover:bg-brand-50",
++  whatsapp: "bg-whatsapp text-white hover:bg-whatsapp-dark",
++  ghost: "text-ink hover:bg-brand-50",
++};
++
++/** Altura y relleno según el tamaño (todos ≥ 40px de alto: fáciles de tocar en celular). */
++const sizes: Record<Size, string> = {
++  sm: "min-h-10 px-4 text-sm",
++  md: "min-h-11 px-5 text-sm",
++  lg: "min-h-12 px-7 text-base",
++};
++
++/** Devuelve las clases de un botón. Exportada por si otro componente necesita el mismo estilo. */
++export function buttonStyles({ variant = "primary", size = "md", fullWidth, className }: StyleOptions = {}) {
++  return cn(base, variants[variant], sizes[size], fullWidth && "w-full", className);
++}
++
++type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & StyleOptions;
++
++/** Botón de acción (<button>). Por defecto `type="button"` para no enviar formularios por accidente. */
++export function Button({ variant, size, fullWidth, className, type = "button", ...props }: ButtonProps) {
++  return <button type={type} className={buttonStyles({ variant, size, fullWidth, className })} {...props} />;
++}
++
++type ButtonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> &
++  StyleOptions & {
++    href: string;
++    children: ReactNode;
++  };
++
++/**
++ * Enlace con aspecto de botón.
++ * - Ruta interna ("/productos") → usa <Link> de Next (navegación rápida, sin recargar).
++ * - Dirección externa ("https://wa.me/...") → usa <a> y se abre en otra pestaña, con
++ *   `rel="noopener noreferrer"` para que la página destino no pueda controlar a la nuestra.
++ */
++export function ButtonLink({ href, variant, size, fullWidth, className, children, ...props }: ButtonLinkProps) {
++  const classes = buttonStyles({ variant, size, fullWidth, className });
++  const isExternal = /^https?:\/\//.test(href);
++
++  if (isExternal) {
++    return (
++      <a href={href} className={classes} target="_blank" rel="noopener noreferrer" {...props}>
++        {children}
++      </a>
++    );
++  }
++
++  return (
++    <Link href={href} className={classes} {...props}>
++      {children}
++    </Link>
++  );
++}
+diff --git a/src/components/ui/container.tsx b/src/components/ui/container.tsx
+new file mode 100644
+index 0000000..2ac2b90
+--- /dev/null
++++ b/src/components/ui/container.tsx
+@@ -0,0 +1,16 @@
++import type { ReactNode } from "react";
++
++import { cn } from "@/lib/cn";
++
++interface ContainerProps {
++  children: ReactNode;
++  className?: string;
++}
++
++/**
++ * Contenedor centrado con ancho máximo y márgenes laterales.
++ * TODAS las secciones lo usan para que el contenido quede alineado igual en toda la web.
++ */
++export function Container({ children, className }: ContainerProps) {
++  return <div className={cn("mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8", className)}>{children}</div>;
++}
+diff --git a/src/components/ui/empty-state.tsx b/src/components/ui/empty-state.tsx
+new file mode 100644
+index 0000000..bd833d8
+--- /dev/null
++++ b/src/components/ui/empty-state.tsx
+@@ -0,0 +1,24 @@
++import type { ReactNode } from "react";
++
++import { GiftIcon } from "./icons";
++
++interface EmptyStateProps {
++  title: string;
++  description?: string;
++  /** Botón o enlace opcional que sugiere qué hacer a continuación. */
++  action?: ReactNode;
++}
++
++/** Mensaje amable para cuando no hay nada que mostrar (lista vacía, sin resultados...). */
++export function EmptyState({ title, description, action }: EmptyStateProps) {
++  return (
++    <div className="flex flex-col items-center rounded-card border border-dashed border-line bg-white px-6 py-14 text-center">
++      <span className="mb-4 flex size-14 items-center justify-center rounded-full bg-brand-50 text-brand-600 text-2xl">
++        <GiftIcon />
++      </span>
++      <h3 className="text-lg font-bold text-ink">{title}</h3>
++      {description && <p className="mt-1 max-w-md text-sm text-muted">{description}</p>}
++      {action && <div className="mt-6">{action}</div>}
++    </div>
++  );
++}
+diff --git a/src/components/ui/icons.tsx b/src/components/ui/icons.tsx
+new file mode 100644
+index 0000000..7079207
+--- /dev/null
++++ b/src/components/ui/icons.tsx
+@@ -0,0 +1,93 @@
++/**
++ * ============================================================================
++ * ICONOS
++ * ============================================================================
++ * Iconos SVG propios (sin instalar librerías). Todos:
++ *  - heredan el color del texto (`currentColor`), así se tiñen con las clases de texto;
++ *  - son decorativos (`aria-hidden`): el significado lo da el texto que los acompaña.
++ * Tamaño por defecto 1.25em → se adaptan al tamaño de la letra que los rodea.
++ */
++import type { SVGProps } from "react";
++
++type IconProps = SVGProps<SVGSVGElement>;
++
++/** Base común: aplica tamaño, color y accesibilidad a todos los iconos. */
++function Svg({ children, ...props }: IconProps) {
++  return (
++    <svg
++      viewBox="0 0 24 24"
++      width="1.25em"
++      height="1.25em"
++      fill="none"
++      stroke="currentColor"
++      strokeWidth={1.8}
++      strokeLinecap="round"
++      strokeLinejoin="round"
++      aria-hidden="true"
++      focusable="false"
++      {...props}
++    >
++      {children}
++    </svg>
++  );
++}
++
++/** Logo de WhatsApp (relleno, no contorno). */
++export function WhatsAppIcon(props: IconProps) {
++  return (
++    <svg
++      viewBox="0 0 24 24"
++      width="1.25em"
++      height="1.25em"
++      fill="currentColor"
++      aria-hidden="true"
++      focusable="false"
++      {...props}
++    >
++      <path d="M12.04 2a9.93 9.93 0 0 0-8.5 15.07L2 22l5.07-1.5A9.94 9.94 0 1 0 12.04 2Zm0 18.1a8.1 8.1 0 0 1-4.13-1.13l-.3-.18-3 .88.9-2.93-.2-.3a8.1 8.1 0 1 1 6.73 3.66Zm4.45-6.06c-.24-.12-1.44-.71-1.66-.79-.22-.08-.39-.12-.55.12-.16.24-.63.79-.77.95-.14.16-.28.18-.52.06a6.6 6.6 0 0 1-1.94-1.2 7.28 7.28 0 0 1-1.34-1.67c-.14-.24-.02-.37.1-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.32-.75-1.8-.2-.47-.4-.41-.55-.42h-.47c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.69 2.58 4.1 3.62.57.25 1.02.4 1.37.5.58.18 1.1.16 1.51.1.46-.07 1.44-.59 1.64-1.16.2-.57.2-1.06.14-1.16-.06-.1-.22-.16-.46-.28Z" />
++    </svg>
++  );
++}
++
++export function MenuIcon(props: IconProps) {
++  return (
++    <Svg {...props}>
++      <path d="M4 7h16M4 12h16M4 17h16" />
++    </Svg>
++  );
++}
++
++export function CloseIcon(props: IconProps) {
++  return (
++    <Svg {...props}>
++      <path d="M6 6l12 12M18 6 6 18" />
++    </Svg>
++  );
++}
++
++export function ArrowRightIcon(props: IconProps) {
++  return (
++    <Svg {...props}>
++      <path d="M5 12h14M13 6l6 6-6 6" />
++    </Svg>
++  );
++}
++
++/** Caja de regalo: se usa como imagen de relleno cuando un producto no tiene foto. */
++export function GiftIcon(props: IconProps) {
++  return (
++    <Svg {...props}>
++      <rect x="3" y="8" width="18" height="4" rx="1" />
++      <path d="M12 8v13M5 12v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8" />
++      <path d="M12 8c-1.5-3.5-5-4-5.5-2.2C6 7.5 8.5 8 12 8Zm0 0c1.5-3.5 5-4 5.5-2.2C18 7.5 15.5 8 12 8Z" />
++    </Svg>
++  );
++}
++
++export function ChevronRightIcon(props: IconProps) {
++  return (
++    <Svg {...props}>
++      <path d="m9 6 6 6-6 6" />
++    </Svg>
++  );
++}
+diff --git a/src/components/ui/section-heading.tsx b/src/components/ui/section-heading.tsx
+new file mode 100644
+index 0000000..4957904
+--- /dev/null
++++ b/src/components/ui/section-heading.tsx
+@@ -0,0 +1,45 @@
++import type { ReactNode } from "react";
++
++import { cn } from "@/lib/cn";
++
++interface SectionHeadingProps {
++  /** Texto pequeño sobre el título (opcional), en mayúsculas y color de marca. */
++  eyebrow?: string;
++  title: string;
++  description?: string;
++  /** Contenido a la derecha del título en pantallas grandes (por ejemplo un enlace "Ver todo"). */
++  action?: ReactNode;
++  /**
++   * Nivel del título. Cada página debe tener UN solo <h1> (el título principal, importante
++   * para buscadores y lectores de pantalla); las secciones internas usan 2 (por defecto).
++   */
++  level?: 1 | 2;
++  className?: string;
++}
++
++/**
++ * Encabezado de sección: [eyebrow] + título + descripción + acción opcional.
++ * Se usa en TODAS las secciones para que los títulos se vean igual en toda la web.
++ */
++export function SectionHeading({ eyebrow, title, description, action, level = 2, className }: SectionHeadingProps) {
++  const Heading = level === 1 ? "h1" : "h2";
++  return (
++    <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between", className)}>
++      <div className="max-w-2xl">
++        {eyebrow && (
++          <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-brand-600">{eyebrow}</p>
++        )}
++        <Heading
++          className={cn(
++            "font-bold tracking-tight text-ink",
++            level === 1 ? "text-3xl sm:text-4xl" : "text-2xl sm:text-3xl",
++          )}
++        >
++          {title}
++        </Heading>
++        {description && <p className="mt-2 text-base text-muted">{description}</p>}
++      </div>
++      {action && <div className="shrink-0">{action}</div>}
++    </div>
++  );
++}
+diff --git a/src/components/ui/skeleton.tsx b/src/components/ui/skeleton.tsx
+new file mode 100644
+index 0000000..a722501
+--- /dev/null
++++ b/src/components/ui/skeleton.tsx
+@@ -0,0 +1,10 @@
++import { cn } from "@/lib/cn";
++
++/**
++ * Bloque gris que "late" mientras llegan los datos de la API.
++ * Se combina para formar esqueletos de carga (ver `ProductGridSkeleton`).
++ * `aria-hidden`: los lectores de pantalla no deben leer cajas vacías.
++ */
++export function Skeleton({ className }: { className?: string }) {
++  return <div aria-hidden="true" className={cn("animate-pulse rounded-lg bg-brand-100/60", className)} />;
++}
+diff --git a/src/components/whatsapp/contact-whatsapp-button.tsx b/src/components/whatsapp/contact-whatsapp-button.tsx
+new file mode 100644
+index 0000000..04de406
+--- /dev/null
++++ b/src/components/whatsapp/contact-whatsapp-button.tsx
+@@ -0,0 +1,38 @@
++import { siteConfig } from "@/config/site";
++import { buildWhatsAppUrl } from "@/lib/whatsapp";
++
++import { ButtonLink } from "../ui/button";
++import { WhatsAppIcon } from "../ui/icons";
++
++interface ContactWhatsAppButtonProps {
++  label?: string;
++  variant?: "primary" | "secondary" | "whatsapp" | "ghost";
++  size?: "sm" | "md" | "lg";
++  fullWidth?: boolean;
++  className?: string;
++}
++
++/**
++ * Botón de contacto GENERAL por WhatsApp (sin producto): para el encabezado, la portada
++ * y el pie de página. El mensaje se define en `siteConfig.whatsapp.generalMessage`.
++ */
++export function ContactWhatsAppButton({
++  label = "Escríbenos por WhatsApp",
++  variant = "whatsapp",
++  size = "md",
++  fullWidth,
++  className,
++}: ContactWhatsAppButtonProps) {
++  return (
++    <ButtonLink
++      href={buildWhatsAppUrl(siteConfig.whatsapp.number, siteConfig.whatsapp.generalMessage)}
++      variant={variant}
++      size={size}
++      fullWidth={fullWidth}
++      className={className}
++    >
++      <WhatsAppIcon />
++      {label}
++    </ButtonLink>
++  );
++}
+diff --git a/src/components/whatsapp/product-whatsapp-button.tsx b/src/components/whatsapp/product-whatsapp-button.tsx
+new file mode 100644
+index 0000000..1cef6d4
+--- /dev/null
++++ b/src/components/whatsapp/product-whatsapp-button.tsx
+@@ -0,0 +1,56 @@
++import { siteConfig } from "@/config/site";
++import { buildProductMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
++import type { Product } from "@/types/catalog";
++
++import { ButtonLink } from "../ui/button";
++import { WhatsAppIcon } from "../ui/icons";
++
++interface ProductWhatsAppButtonProps {
++  product: Product;
++  /** Texto visible del botón. */
++  label?: string;
++  size?: "sm" | "md" | "lg";
++  fullWidth?: boolean;
++  /** Clases extra (por ejemplo, para ajustar el relleno según el lugar donde se use). */
++  className?: string;
++}
++
++/**
++ * Botón "Pedir por WhatsApp" de UN producto.
++ *
++ * Reemplaza al clásico "Añadir al carrito": en lugar de un carrito, abre WhatsApp con un
++ * mensaje ya escrito que incluye el nombre, el precio y el enlace del producto, de modo que
++ * el cliente solo tiene que pulsar "Enviar".
++ *
++ * Es un componente de servidor: el enlace se calcula al renderizar, no hace falta JavaScript
++ * en el navegador.
++ */
++export function ProductWhatsAppButton({
++  product,
++  label = "Pedir por WhatsApp",
++  size = "md",
++  fullWidth,
++  className,
++}: ProductWhatsAppButtonProps) {
++  const message = buildProductMessage(product, {
++    siteUrl: siteConfig.url,
++    greeting: siteConfig.whatsapp.productGreeting,
++    closing: siteConfig.whatsapp.productClosing,
++  });
++
++  return (
++    <ButtonLink
++      href={buildWhatsAppUrl(siteConfig.whatsapp.number, message)}
++      variant="whatsapp"
++      size={size}
++      fullWidth={fullWidth}
++      className={className}
++      // El nombre accesible incluye el texto visible + el producto, para que quien usa lector
++      // de pantalla sepa de cuál producto se trata cuando hay muchos botones iguales.
++      aria-label={`${label}: ${product.name}`}
++    >
++      <WhatsAppIcon />
++      {label}
++    </ButtonLink>
++  );
++}
+diff --git a/src/components/whatsapp/whatsapp-float.tsx b/src/components/whatsapp/whatsapp-float.tsx
+new file mode 100644
+index 0000000..b362e72
+--- /dev/null
++++ b/src/components/whatsapp/whatsapp-float.tsx
+@@ -0,0 +1,22 @@
++import { siteConfig } from "@/config/site";
++import { buildWhatsAppUrl } from "@/lib/whatsapp";
++
++import { WhatsAppIcon } from "../ui/icons";
++
++/**
++ * Botón redondo flotante de WhatsApp, fijo en la esquina inferior derecha de todas las
++ * páginas (se coloca una sola vez en el layout raíz). Es solo un enlace: no usa JavaScript.
++ */
++export function WhatsAppFloat() {
++  return (
++    <a
++      href={buildWhatsAppUrl(siteConfig.whatsapp.number, siteConfig.whatsapp.generalMessage)}
++      target="_blank"
++      rel="noopener noreferrer"
++      aria-label="Escríbenos por WhatsApp"
++      className="fixed bottom-5 right-5 z-40 flex size-14 items-center justify-center rounded-full bg-whatsapp text-3xl text-white shadow-card-hover transition-transform hover:scale-105 hover:bg-whatsapp-dark"
++    >
++      <WhatsAppIcon />
++    </a>
++  );
++}
+diff --git a/src/config/site.ts b/src/config/site.ts
+new file mode 100644
+index 0000000..3a01aea
+--- /dev/null
++++ b/src/config/site.ts
+@@ -0,0 +1,61 @@
++/**
++ * ============================================================================
++ * CONFIGURACIÓN DEL SITIO
++ * ============================================================================
++ * Este es el ÚNICO archivo que hay que tocar para cambiar datos del negocio:
++ * nombre, número de WhatsApp, textos del encabezado, etc. Ningún componente
++ * tiene estos datos escritos "a mano".
++ *
++ * Variables de entorno opcionales (ponlas en tu .env o en compose.yaml):
++ *   NEXT_PUBLIC_WHATSAPP_NUMBER  Número con indicativo de país y sin "+" ni espacios.
++ *                                Ejemplo para Colombia: 573001234567
++ *   NEXT_PUBLIC_SITE_URL         URL pública de la tienda (se usa para armar el enlace del
++ *                                producto dentro del mensaje de WhatsApp).
++ *                                Ejemplo: https://www.mitienda.com
++ */
++export const siteConfig = {
++  /** Nombre de la tienda: aparece en el encabezado, el pie y el título de la pestaña. */
++  name: "Vikos Store",
++
++  /** Frase corta que acompaña al nombre. */
++  tagline: "Regalos que sorprenden",
++
++  /** Descripción para buscadores (Google) y para cuando se comparte el enlace. */
++  description:
++    "Tienda de regalos y detalles para toda ocasión. Elige tu regalo favorito y pídelo por WhatsApp.",
++
++  /**
++   * URL pública del sitio, SIN barra final.
++   * En local es http://localhost:3000; en producción debe ser tu dominio real.
++   */
++  url: (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, ""),
++
++  /** Formato de dinero. COP = pesos colombianos, sin decimales salvo que el precio los tenga. */
++  currency: { locale: "es-CO", code: "COP" },
++
++  /** Franja superior del sitio. Pon `null` para ocultarla. */
++  announcement: "Entregas a domicilio en Bogotá" as string | null,
++
++  whatsapp: {
++    /**
++     * Número al que llegan los pedidos. Solo dígitos, con indicativo de país.
++     * ⚠️ El valor por defecto es de EJEMPLO: cámbialo por el número real del negocio.
++     */
++    number: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "573000000000",
++
++    /** Primera línea del mensaje que se abre en WhatsApp. */
++    productGreeting: "Hola 👋, me interesa este regalo:",
++
++    /** Última línea del mensaje de un producto. */
++    productClosing: "¿Me confirmas disponibilidad y tiempo de entrega?",
++
++    /** Mensaje genérico (botón flotante, encabezado, pie de página). */
++    generalMessage: "Hola 👋, quiero información sobre sus regalos.",
++  },
++
++  /** Enlaces del menú principal (encabezado y pie). */
++  nav: [
++    { label: "Inicio", href: "/" },
++    { label: "Tienda", href: "/productos" },
++  ],
++} as const;
+diff --git a/src/lib/api-client.ts b/src/lib/api-client.ts
+new file mode 100644
+index 0000000..ef73a39
+--- /dev/null
++++ b/src/lib/api-client.ts
+@@ -0,0 +1,91 @@
++/**
++ * ============================================================================
++ * CLIENTE HTTP DE LA API
++ * ============================================================================
++ * Único lugar del frontend que llama a `fetch` hacia nuestros endpoints /api/*.
++ * Las páginas NUNCA llaman a fetch directamente: usan `services/catalog-service`,
++ * que a su vez usa este cliente. Así, si la API cambia de dirección o de formato de
++ * error, se arregla en un solo archivo.
++ *
++ * Se ejecuta SOLO en el servidor (Server Components).
++ */
++
++/** Error que lanzamos cuando la API responde mal o no se puede contactar. */
++export class ApiError extends Error {
++  /** Código HTTP (404, 500...). Vale 0 si ni siquiera hubo respuesta (API caída). */
++  readonly status: number;
++  /** Código de error de negocio que envía la API (ej. "PRODUCT_NOT_FOUND"), si lo hay. */
++  readonly code: string | undefined;
++
++  constructor(status: number, code: string | undefined, message: string) {
++    super(message);
++    this.name = "ApiError";
++    this.status = status;
++    this.code = code;
++  }
++}
++
++/**
++ * Dirección base de la API.
++ *
++ * La API vive en este mismo proyecto Next.js, así que por defecto el servidor se llama a
++ * sí mismo (`localhost` + el puerto en el que corre). Si algún día la API se separa a otro
++ * servidor, basta con definir la variable de entorno API_BASE_URL.
++ */
++function getApiBaseUrl(): string {
++  const fromEnv = process.env.API_BASE_URL;
++  if (fromEnv) return fromEnv.replace(/\/$/, "");
++  return `http://localhost:${process.env.PORT ?? 3000}`;
++}
++
++/** Forma de los errores que devuelve nuestra API: { error: { code, message } }. */
++interface ApiErrorBody {
++  error?: { code?: string; message?: string };
++}
++
++/**
++ * GET a la API que devuelve el JSON tipado.
++ *
++ * @throws ApiError si la respuesta no es 2xx o si no se pudo contactar la API.
++ */
++export async function apiGet<T>(path: string): Promise<T> {
++  let response: Response;
++
++  try {
++    response = await fetch(`${getApiBaseUrl()}${path}`, {
++      headers: { Accept: "application/json" },
++      // La tienda debe mostrar siempre lo último que se guardó en el panel de administración,
++      // por eso no se guarda copia de las respuestas.
++      cache: "no-store",
++    });
++  } catch {
++    // fetch solo lanza cuando no hay conexión (API caída, DNS, etc.).
++    throw new ApiError(0, "NETWORK_ERROR", "No se pudo conectar con el servidor.");
++  }
++
++  if (!response.ok) {
++    // Intentamos leer el mensaje que envía la API; si el cuerpo no es JSON, seguimos igual.
++    const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
++    throw new ApiError(
++      response.status,
++      body?.error?.code,
++      body?.error?.message ?? `La API respondió con el estado ${response.status}.`,
++    );
++  }
++
++  return (await response.json()) as T;
++}
++
++/**
++ * Igual que `apiGet`, pero un 404 se convierte en `null` en lugar de un error.
++ * Es lo que queremos cuando el recurso "puede no existir" (por ejemplo, un producto
++ * cuyo enlace se escribió mal): la página decide mostrar su pantalla de "no encontrado".
++ */
++export async function apiGetOrNull<T>(path: string): Promise<T | null> {
++  try {
++    return await apiGet<T>(path);
++  } catch (error) {
++    if (error instanceof ApiError && error.status === 404) return null;
++    throw error;
++  }
++}
+diff --git a/src/lib/cn.ts b/src/lib/cn.ts
+new file mode 100644
+index 0000000..f2c847e
+--- /dev/null
++++ b/src/lib/cn.ts
+@@ -0,0 +1,9 @@
++/**
++ * Une clases CSS ignorando los valores "vacíos" (false, null, undefined, "").
++ * Sirve para aplicar clases condicionales sin ensuciar el JSX:
++ *
++ *   cn("px-4", isActive && "bg-brand-600", className)
++ */
++export function cn(...parts: Array<string | false | null | undefined>): string {
++  return parts.filter(Boolean).join(" ");
++}
+diff --git a/src/lib/format-price.ts b/src/lib/format-price.ts
+new file mode 100644
+index 0000000..3a67086
+--- /dev/null
++++ b/src/lib/format-price.ts
+@@ -0,0 +1,22 @@
++import { siteConfig } from "@/config/site";
++
++/**
++ * Convierte un precio en pesos a texto legible: 89900 → "$ 89.900".
++ *
++ * - Usa el formato colombiano (punto para miles).
++ * - No muestra decimales cuando el precio es entero (lo normal en una tienda).
++ * - Si el precio sí trae centavos (por ejemplo 99900.5) los conserva, para no mentir.
++ *
++ * Es una función pura (sin React) para poder probarla fácilmente.
++ */
++export function formatPrice(
++  pesos: number,
++  { locale, code } = siteConfig.currency,
++): string {
++  return new Intl.NumberFormat(locale, {
++    style: "currency",
++    currency: code,
++    minimumFractionDigits: 0,
++    maximumFractionDigits: 2,
++  }).format(pesos);
++}
+diff --git a/src/lib/truncate.ts b/src/lib/truncate.ts
+new file mode 100644
+index 0000000..7437b70
+--- /dev/null
++++ b/src/lib/truncate.ts
+@@ -0,0 +1,5 @@
++/** Recorta un texto a `max` caracteres agregando "…" (para descripciones de buscadores). */
++export function truncate(text: string, max = 160): string {
++  const clean = text.replace(/\s+/g, " ").trim();
++  return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`;
++}
+diff --git a/src/lib/whatsapp.ts b/src/lib/whatsapp.ts
+new file mode 100644
+index 0000000..86095b6
+--- /dev/null
++++ b/src/lib/whatsapp.ts
+@@ -0,0 +1,64 @@
++import { formatPrice } from "./format-price";
++
++/**
++ * ============================================================================
++ * UTILIDADES DE WHATSAPP
++ * ============================================================================
++ * Funciones puras (sin React ni variables de entorno): reciben todo por parámetro,
++ * así se pueden probar y reutilizar. Los componentes se encargan de pasarles la
++ * configuración de `siteConfig`.
++ */
++
++/**
++ * Arma el enlace que abre WhatsApp con un mensaje ya escrito.
++ *
++ * Usa el formato oficial `https://wa.me/<número>?text=<mensaje>`:
++ * - En celular abre la app; en computador abre WhatsApp Web.
++ * - El número debe ir solo con dígitos (se limpian "+", espacios y guiones).
++ * - El mensaje se codifica para que los saltos de línea, tildes y emojis viajen bien.
++ */
++export function buildWhatsAppUrl(phone: string, message: string): string {
++  const digits = phone.replace(/\D/g, "");
++  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
++}
++
++/** Datos mínimos de un producto necesarios para escribir el mensaje. */
++interface ProductForMessage {
++  name: string;
++  /** Precio en pesos. */
++  price: number;
++  slug: string;
++}
++
++interface ProductMessageOptions {
++  /** URL pública del sitio, sin barra final (para armar el enlace del producto). */
++  siteUrl: string;
++  greeting: string;
++  closing: string;
++}
++
++/**
++ * Escribe el mensaje que el cliente enviará por un producto. Resultado de ejemplo:
++ *
++ *   Hola 👋, me interesa este regalo:
++ *
++ *   🎁 Oso grande
++ *   💰 $ 89.900
++ *   🔗 https://mitienda.com/productos/oso-grande
++ *
++ *   ¿Me confirmas disponibilidad y tiempo de entrega?
++ */
++export function buildProductMessage(
++  product: ProductForMessage,
++  { siteUrl, greeting, closing }: ProductMessageOptions,
++): string {
++  return [
++    greeting,
++    "",
++    `🎁 ${product.name}`,
++    `💰 ${formatPrice(product.price)}`,
++    `🔗 ${siteUrl}/productos/${product.slug}`,
++    "",
++    closing,
++  ].join("\n");
++}
+diff --git a/src/services/catalog-service.ts b/src/services/catalog-service.ts
+new file mode 100644
+index 0000000..45fffe1
+--- /dev/null
++++ b/src/services/catalog-service.ts
+@@ -0,0 +1,58 @@
++/**
++ * ============================================================================
++ * SERVICIO DEL CATÁLOGO
++ * ============================================================================
++ * Capa de acceso a datos que usan las páginas y los bloques de la tienda. Cada función
++ * corresponde a un endpoint público de la API y devuelve datos ya tipados.
++ *
++ *   Página / bloque  →  catalog-service  →  api-client  →  /api/...
++ *
++ * Reglas de esta capa:
++ *  - No sabe nada de React ni de diseño.
++ *  - Los recursos que "pueden no existir" devuelven `null` (la página decide qué mostrar).
++ *  - Cada función está envuelta en `cache()` de React: si dos bloques de la MISMA página
++ *    piden lo mismo (por ejemplo, `generateMetadata` y la propia página piden el mismo
++ *    producto), la API se consulta una sola vez. OJO: `cache` compara los argumentos con
++ *    `===`, por eso todos los argumentos son valores simples (texto), nunca objetos.
++ */
++import { cache } from "react";
++
++import { apiGet, apiGetOrNull } from "@/lib/api-client";
++import type { Category, Product } from "@/types/catalog";
++
++/** Las listas de la API vienen envueltas así: { data: [...] }. */
++interface ListResponse<T> {
++  data: T[];
++}
++
++/** Categorías activas (GET /api/categorias). */
++export const getCategories = cache(async (): Promise<Category[]> => {
++  const { data } = await apiGet<ListResponse<Category>>("/api/categorias");
++  return data;
++});
++
++/**
++ * Una categoría por slug (ej. "peluches") o por id. La API acepta ambos en el mismo endpoint.
++ * Devuelve `null` si no existe o si está desactivada (el público no puede verla).
++ */
++export const getCategory = cache(async (idOrSlug: string): Promise<Category | null> => {
++  return apiGetOrNull<Category>(`/api/categorias/${encodeURIComponent(idOrSlug)}`);
++});
++
++/**
++ * Productos visibles en la tienda (GET /api/productos).
++ * Sin argumento devuelve todos; con `categoryId` solo los de esa categoría.
++ */
++export const getProducts = cache(async (categoryId?: string): Promise<Product[]> => {
++  const query = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
++  const { data } = await apiGet<ListResponse<Product>>(`/api/productos${query}`);
++  return data;
++});
++
++/**
++ * Un producto por slug (ej. "oso-grande") o por id.
++ * Devuelve `null` si no existe, está oculto o su categoría está desactivada.
++ */
++export const getProduct = cache(async (idOrSlug: string): Promise<Product | null> => {
++  return apiGetOrNull<Product>(`/api/productos/${encodeURIComponent(idOrSlug)}`);
++});
+diff --git a/src/types/catalog.ts b/src/types/catalog.ts
+new file mode 100644
+index 0000000..99e525a
+--- /dev/null
++++ b/src/types/catalog.ts
+@@ -0,0 +1,16 @@
++/**
++ * ============================================================================
++ * TIPOS DEL CATÁLOGO (lo que devuelve la API)
++ * ============================================================================
++ * No volvemos a escribir estas formas a mano: se importan (solo como TIPOS, no se
++ * ejecuta nada del backend) desde los "presenters" de la API. Así, si el backend cambia
++ * un campo, TypeScript marca el error aquí en lugar de fallar en silencio en pantalla.
++ */
++import type { CategoryResponse } from "@/modules/categories/presentation/category-presenter";
++import type { ProductResponse } from "@/modules/products/presentation/product-presenter";
++
++/** Un producto tal como lo entrega GET /api/productos. `price` está en pesos. */
++export type Product = ProductResponse;
++
++/** Una categoría tal como la entrega GET /api/categorias. */
++export type Category = CategoryResponse;
+diff --git a/tests/unit/session.test.ts b/tests/unit/session.test.ts
+index dd16125..4fc10d4 100644
+--- a/tests/unit/session.test.ts
++++ b/tests/unit/session.test.ts
+@@ -183,7 +183,7 @@ describe("flujo login -> requireAdmin", () => {
+   });
+ 
+   it("logout borra la cookie (204) sin exigir sesión", async () => {
+-    const response = await logoutHandler({ secureCookies: false })(new Request("http://x/api/auth/logout", { method: "POST" }));
++    const response = await logoutHandler({ secureCookies: false })();
+     assert.equal(response.status, 204);
+     assert.match(response.headers.get("set-cookie") ?? "", /Max-Age=0/);
+   });
+diff --git a/tests/unit/storefront-components.test.ts b/tests/unit/storefront-components.test.ts
+new file mode 100644
+index 0000000..f892312
+--- /dev/null
++++ b/tests/unit/storefront-components.test.ts
+@@ -0,0 +1,50 @@
++/**
++ * Prueba de componentes de la tienda renderizados de verdad (a HTML, sin navegador):
++ * comprueba el enlace de WhatsApp que recibiría el cliente al pulsar "Pedir ahora".
++ */
++
++import assert from "node:assert/strict";
++import { describe, it } from "node:test";
++
++import { createElement } from "react";
++import { renderToStaticMarkup } from "react-dom/server";
++
++import { ProductWhatsAppButton } from "../../src/components/whatsapp/product-whatsapp-button.tsx";
++import type { Product } from "../../src/types/catalog.ts";
++
++const product: Product = {
++  id: "10000000-0000-4000-8000-000000000001",
++  name: "Amor Gigante",
++  slug: "amor-gigante",
++  description: "",
++  price: 489000,
++  priceInCents: 48_900_000,
++  categoryId: null,
++  imageUrl: null,
++  isAvailable: true,
++  createdAt: "2026-10-18T00:00:00.000Z",
++  updatedAt: "2026-10-18T00:00:00.000Z",
++};
++
++describe("ProductWhatsAppButton", () => {
++  const html = renderToStaticMarkup(createElement(ProductWhatsAppButton, { product, label: "Pedir ahora", size: "sm" }));
++  const href = /href="([^"]+)"/.exec(html)?.[1]?.replaceAll("&amp;", "&") ?? "";
++
++  it("abre wa.me en otra pestaña de forma segura", () => {
++    assert.match(href, /^https:\/\/wa\.me\/\d+\?text=/);
++    assert.match(html, /target="_blank"/);
++    assert.match(html, /rel="noopener noreferrer"/);
++  });
++
++  it("el mensaje trae nombre, precio y enlace del producto", () => {
++    const text = new URL(href).searchParams.get("text")?.replace(/\u00a0/g, " ") ?? "";
++    assert.match(text, /🎁 Amor Gigante/);
++    assert.match(text, /💰 \$ 489\.000/);
++    assert.match(text, /🔗 http:\/\/localhost:3000\/productos\/amor-gigante/);
++  });
++
++  it("el nombre accesible incluye el texto visible y el producto", () => {
++    assert.match(html, /aria-label="Pedir ahora: Amor Gigante"/);
++    assert.match(html, />Pedir ahora</);
++  });
++});
+diff --git a/tests/unit/storefront.test.ts b/tests/unit/storefront.test.ts
+new file mode 100644
+index 0000000..634e7ec
+--- /dev/null
++++ b/tests/unit/storefront.test.ts
+@@ -0,0 +1,141 @@
++/**
++ * Pruebas de la capa de datos y utilidades de la tienda (frontend):
++ * formato de precio, mensajes de WhatsApp, cliente HTTP y servicio del catálogo.
++ * No necesitan servidor: `fetch` se reemplaza por una función simulada.
++ */
++
++import assert from "node:assert/strict";
++import { afterEach, beforeEach, describe, it } from "node:test";
++
++import { ApiError, apiGet, apiGetOrNull } from "../../src/lib/api-client.ts";
++import { formatPrice } from "../../src/lib/format-price.ts";
++import { truncate } from "../../src/lib/truncate.ts";
++import { buildProductMessage, buildWhatsAppUrl } from "../../src/lib/whatsapp.ts";
++import { getCategories, getCategory, getProduct, getProducts } from "../../src/services/catalog-service.ts";
++
++describe("formatPrice", () => {
++  // Intl usa espacios "duros" (U+00A0) entre el símbolo y el número: se normalizan para comparar.
++  const plain = (text: string) => text.replace(/\u00a0/g, " ");
++
++  it("usa el formato colombiano y no muestra decimales en precios enteros", () => {
++    assert.equal(plain(formatPrice(89900)), "$ 89.900");
++    assert.equal(plain(formatPrice(1250000)), "$ 1.250.000");
++  });
++
++  it("conserva los centavos si el precio los tiene", () => {
++    assert.match(plain(formatPrice(99900.5)), /^\$ 99\.900,5$/);
++  });
++});
++
++describe("WhatsApp", () => {
++  it("arma la URL oficial con solo dígitos en el número", () => {
++    const url = buildWhatsAppUrl("+57 313-273 4121", "Hola");
++    assert.equal(url, "https://wa.me/573132734121?text=Hola");
++  });
++
++  it("codifica saltos de línea, tildes y emojis para que viajen intactos", () => {
++    const url = new URL(buildWhatsAppUrl("573000000000", "¿Qué tal? 👋\nGracias & hasta pronto"));
++    assert.equal(url.searchParams.get("text"), "¿Qué tal? 👋\nGracias & hasta pronto");
++  });
++
++  it("el mensaje de un producto incluye nombre, precio y enlace", () => {
++    const message = buildProductMessage(
++      { name: "Oso grande", price: 89900, slug: "oso-grande" },
++      { siteUrl: "https://mitienda.com", greeting: "Hola", closing: "Gracias" },
++    );
++    const lines = message.split("\n").map((line) => line.replace(/\u00a0/g, " "));
++    assert.deepEqual(lines, [
++      "Hola",
++      "",
++      "🎁 Oso grande",
++      "💰 $ 89.900",
++      "🔗 https://mitienda.com/productos/oso-grande",
++      "",
++      "Gracias",
++    ]);
++  });
++});
++
++describe("truncate", () => {
++  it("no toca textos cortos y recorta los largos con puntos suspensivos", () => {
++    assert.equal(truncate("corto", 10), "corto");
++    const long = truncate("a".repeat(300), 160);
++    assert.equal(long.length, 160);
++    assert.ok(long.endsWith("…"));
++  });
++
++  it("colapsa espacios y saltos de línea", () => {
++    assert.equal(truncate("uno\n\n  dos"), "uno dos");
++  });
++});
++
++describe("cliente HTTP y servicio del catálogo", () => {
++  const originalFetch = globalThis.fetch;
++  let calls: string[];
++
++  /** Reemplaza fetch por una respuesta simulada y registra qué URL se pidió. */
++  function mockFetch(status: number, body: unknown) {
++    globalThis.fetch = (async (input: RequestInfo | URL) => {
++      calls.push(String(input));
++      return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
++    }) as typeof fetch;
++  }
++
++  beforeEach(() => {
++    calls = [];
++    process.env.API_BASE_URL = "http://api.test";
++  });
++  afterEach(() => {
++    globalThis.fetch = originalFetch;
++    delete process.env.API_BASE_URL;
++  });
++
++  it("desenvuelve las listas { data: [...] } de la API", async () => {
++    mockFetch(200, { data: [{ id: "1", name: "Peluches" }] });
++    const categories = await getCategories();
++    assert.equal(categories[0]?.name, "Peluches");
++    assert.equal(calls[0], "http://api.test/api/categorias");
++  });
++
++  it("filtra productos por categoría usando el parámetro categoryId", async () => {
++    mockFetch(200, { data: [] });
++    await getProducts("7f1b4f0e-6c1e-4f43-a6b0-000000000001");
++    assert.equal(calls[0], "http://api.test/api/productos?categoryId=7f1b4f0e-6c1e-4f43-a6b0-000000000001");
++  });
++
++  it("un 404 se convierte en null (producto o categoría inexistente)", async () => {
++    mockFetch(404, { error: { code: "PRODUCT_NOT_FOUND", message: "no existe" } });
++    assert.equal(await getProduct("nope"), null);
++    assert.equal(await getCategory("nope"), null);
++  });
++
++  it("codifica el identificador para que no pueda alterar la ruta", async () => {
++    mockFetch(404, {});
++    await getProduct("../admin?x=1");
++    assert.equal(calls[0], "http://api.test/api/productos/..%2Fadmin%3Fx%3D1");
++  });
++
++  it("otros errores HTTP lanzan ApiError con el código y mensaje de la API", async () => {
++    mockFetch(500, { error: { code: "INTERNAL_ERROR", message: "Error interno del servidor" } });
++    await assert.rejects(apiGet("/api/productos"), (error: unknown) => {
++      assert.ok(error instanceof ApiError);
++      assert.equal(error.status, 500);
++      assert.equal(error.code, "INTERNAL_ERROR");
++      return true;
++    });
++    // Un 500 NUNCA se disfraza de "no encontrado".
++    await assert.rejects(apiGetOrNull("/api/productos/x"), ApiError);
++  });
++
++  it("si la API no responde, lanza ApiError con estado 0", async () => {
++    globalThis.fetch = (async () => {
++      throw new TypeError("fetch failed");
++    }) as typeof fetch;
++    await assert.rejects(apiGet("/api/productos"), (error: unknown) => {
++      assert.ok(error instanceof ApiError);
++      assert.equal(error.status, 0);
++      assert.equal(error.code, "NETWORK_ERROR");
++      return true;
++    });
++  });
++});
