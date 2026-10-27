@@ -7,27 +7,36 @@
  * Necesita JavaScript en el navegador porque tiene ESTADO (abierto / cerrado), por eso
  * lleva "use client". Todo lo demás de la tienda se renderiza en el servidor.
  *
- * Para no meter más código del necesario al navegador, el contenido que NO depende del
- * estado (el botón de WhatsApp) llega desde el servidor como `children`.
+ * Los elementos del menú (enlaces fijos, categorías y botón de WhatsApp) llegan desde el
+ * servidor como `children`: así este componente no sabe nada de la API ni de la
+ * configuración, y no se envía al navegador más código del necesario.
  */
-import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 
 import { CloseIcon, MenuIcon } from "../ui/icons";
 
 interface MobileNavProps {
-  links: ReadonlyArray<{ label: string; href: string }>;
-  /** Contenido extra al final del menú (renderizado en el servidor). */
-  children?: ReactNode;
+  /** Elementos <li> del menú. */
+  children: ReactNode;
 }
 
-export function MobileNav({ links, children }: MobileNavProps) {
+export function MobileNav({ children }: MobileNavProps) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
+  /**
+   * Al navegar, el layout NO se vuelve a montar, así que el menú seguiría abierto.
+   * En lugar de poner un `onClick` en cada enlace (los enlaces vienen del servidor y no
+   * pueden llevar funciones), se escucha UNA vez en todo el menú: si el clic fue sobre un
+   * enlace (o dentro de uno), se cierra.
+   */
+  const closeOnLinkClick = (event: MouseEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest("a")) close();
+  };
+
   return (
     // Escape cierra el menú (comportamiento esperado por quien navega con teclado).
-    <div className="md:hidden" onKeyDown={(event) => event.key === "Escape" && close()}>
+    <div onKeyDown={(event) => event.key === "Escape" && close()}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -44,23 +53,10 @@ export function MobileNav({ links, children }: MobileNavProps) {
         <nav
           id="menu-movil"
           aria-label="Menú móvil"
-          className="absolute inset-x-0 top-full border-b border-line bg-cream shadow-card"
+          onClick={closeOnLinkClick}
+          className="absolute inset-x-0 top-full max-h-[calc(100vh-4rem)] overflow-y-auto border-b border-line bg-cream shadow-card"
         >
-          <ul className="mx-auto max-w-7xl space-y-1 px-4 py-3">
-            {links.map((link) => (
-              <li key={link.href}>
-                {/* Al navegar, el layout NO se vuelve a montar: hay que cerrar el menú a mano. */}
-                <Link
-                  href={link.href}
-                  onClick={close}
-                  className="block rounded-lg px-3 py-3 font-semibold text-ink hover:bg-brand-50"
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-            {children && <li className="pt-2">{children}</li>}
-          </ul>
+          <ul className="mx-auto max-w-7xl space-y-1 px-4 py-3">{children}</ul>
         </nav>
       )}
     </div>

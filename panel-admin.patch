@@ -1,0 +1,3245 @@
+diff --git a/src/app/error.tsx b/src/app/(store)/error.tsx
+similarity index 100%
+rename from src/app/error.tsx
+rename to src/app/(store)/error.tsx
+diff --git a/src/app/(store)/layout.tsx b/src/app/(store)/layout.tsx
+new file mode 100644
+index 0000000..1811950
+--- /dev/null
++++ b/src/app/(store)/layout.tsx
+@@ -0,0 +1,8 @@
++import type { ReactNode } from "react";
++
++import { StoreShell } from "@/components/layout/store-shell";
++
++/** Marco de la tienda pública: todas las páginas de este grupo lo comparten. */
++export default function StoreLayout({ children }: { children: ReactNode }) {
++  return <StoreShell>{children}</StoreShell>;
++}
+diff --git a/src/app/(store)/not-found.tsx b/src/app/(store)/not-found.tsx
+new file mode 100644
+index 0000000..8c58f6c
+--- /dev/null
++++ b/src/app/(store)/not-found.tsx
+@@ -0,0 +1,10 @@
++import { NotFoundView } from "@/components/layout/not-found-view";
++
++/**
++ * Pantalla 404 de la tienda. Next.js la muestra cuando una página de la tienda llama a
++ * `notFound()` (por ejemplo, un producto que no existe o está oculto). Se dibuja DENTRO del
++ * marco de la tienda (encabezado y pie).
++ */
++export default function NotFound() {
++  return <NotFoundView />;
++}
+diff --git a/src/app/page.tsx b/src/app/(store)/page.tsx
+similarity index 100%
+rename from src/app/page.tsx
+rename to src/app/(store)/page.tsx
+diff --git a/src/app/admin/(panel)/categorias/page.tsx b/src/app/admin/(panel)/categorias/page.tsx
+new file mode 100644
+index 0000000..6333ea6
+--- /dev/null
++++ b/src/app/admin/(panel)/categorias/page.tsx
+@@ -0,0 +1,16 @@
++import type { Metadata } from "next";
++import { Suspense } from "react";
++
++import { AdminPageSkeleton } from "@/components/admin/common/admin-skeleton";
++import { AdminCategoriesContent } from "@/components/page-content/admin-categories-content";
++
++export const metadata: Metadata = { title: "Categorías" };
++
++/** CATEGORÍAS ( /admin/categorias ): lista y gestión. */
++export default function AdminCategoriesPage() {
++  return (
++    <Suspense fallback={<AdminPageSkeleton />}>
++      <AdminCategoriesContent />
++    </Suspense>
++  );
++}
+diff --git a/src/app/admin/(panel)/error.tsx b/src/app/admin/(panel)/error.tsx
+new file mode 100644
+index 0000000..648b850
+--- /dev/null
++++ b/src/app/admin/(panel)/error.tsx
+@@ -0,0 +1,25 @@
++"use client";
++
++import { Button, ButtonLink } from "@/components/ui/button";
++import { EmptyState } from "@/components/ui/empty-state";
++
++/**
++ * Error inesperado dentro del panel (por ejemplo, la API no responde). Se dibuja dentro del
++ * marco del panel. No se muestra el mensaje técnico: solo un texto amable.
++ */
++export default function AdminError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
++  return (
++    <EmptyState
++      title="No pudimos cargar esta página"
++      description="Ocurrió un problema al leer los datos. Inténtalo de nuevo en unos segundos."
++      action={
++        <div className="flex flex-col gap-3 sm:flex-row">
++          <Button onClick={() => retry()}>Reintentar</Button>
++          <ButtonLink href="/admin" variant="secondary">
++            Ir al resumen
++          </ButtonLink>
++        </div>
++      }
++    />
++  );
++}
+diff --git a/src/app/admin/(panel)/layout.tsx b/src/app/admin/(panel)/layout.tsx
+new file mode 100644
+index 0000000..d9cf596
+--- /dev/null
++++ b/src/app/admin/(panel)/layout.tsx
+@@ -0,0 +1,11 @@
++import type { ReactNode } from "react";
++
++import { AdminShell } from "@/components/admin/layout/admin-shell";
++
++/**
++ * Marco del panel (barra lateral). Está en el grupo `(panel)` para que el LOGIN, que vive en
++ * /admin/login fuera del grupo, se muestre sin barra lateral. Las URLs no cambian.
++ */
++export default function PanelLayout({ children }: { children: ReactNode }) {
++  return <AdminShell>{children}</AdminShell>;
++}
+diff --git a/src/app/admin/(panel)/not-found.tsx b/src/app/admin/(panel)/not-found.tsx
+new file mode 100644
+index 0000000..c2bd4e6
+--- /dev/null
++++ b/src/app/admin/(panel)/not-found.tsx
+@@ -0,0 +1,13 @@
++import { ButtonLink } from "@/components/ui/button";
++import { EmptyState } from "@/components/ui/empty-state";
++
++/** 404 dentro del panel (por ejemplo, editar un producto que ya no existe). */
++export default function AdminNotFound() {
++  return (
++    <EmptyState
++      title="No encontramos esto"
++      description="Puede que haya sido eliminado o que el enlace esté mal escrito."
++      action={<ButtonLink href="/admin/productos">Volver a productos</ButtonLink>}
++    />
++  );
++}
+diff --git a/src/app/admin/(panel)/page.tsx b/src/app/admin/(panel)/page.tsx
+new file mode 100644
+index 0000000..3d195a9
+--- /dev/null
++++ b/src/app/admin/(panel)/page.tsx
+@@ -0,0 +1,16 @@
++import type { Metadata } from "next";
++import { Suspense } from "react";
++
++import { AdminPageSkeleton } from "@/components/admin/common/admin-skeleton";
++import { AdminDashboardContent } from "@/components/page-content/admin-dashboard-content";
++
++export const metadata: Metadata = { title: "Resumen" };
++
++/** RESUMEN ( /admin ): cifras y últimos productos. */
++export default function AdminDashboardPage() {
++  return (
++    <Suspense fallback={<AdminPageSkeleton rows={4} />}>
++      <AdminDashboardContent />
++    </Suspense>
++  );
++}
+diff --git a/src/app/admin/(panel)/productos/[id]/page.tsx b/src/app/admin/(panel)/productos/[id]/page.tsx
+new file mode 100644
+index 0000000..db2eb7e
+--- /dev/null
++++ b/src/app/admin/(panel)/productos/[id]/page.tsx
+@@ -0,0 +1,18 @@
++import type { Metadata } from "next";
++import { Suspense } from "react";
++
++import { AdminPageSkeleton } from "@/components/admin/common/admin-skeleton";
++import { AdminProductEditContent } from "@/components/page-content/admin-product-form-content";
++
++export const metadata: Metadata = { title: "Editar producto" };
++
++type Props = { params: Promise<{ id: string }> };
++
++/** EDITAR PRODUCTO ( /admin/productos/<id> ). */
++export default function AdminProductEditPage({ params }: Props) {
++  return (
++    <Suspense fallback={<AdminPageSkeleton rows={4} />}>
++      <AdminProductEditContent paramsPromise={params} />
++    </Suspense>
++  );
++}
+diff --git a/src/app/admin/(panel)/productos/nuevo/page.tsx b/src/app/admin/(panel)/productos/nuevo/page.tsx
+new file mode 100644
+index 0000000..1c9d21b
+--- /dev/null
++++ b/src/app/admin/(panel)/productos/nuevo/page.tsx
+@@ -0,0 +1,16 @@
++import type { Metadata } from "next";
++import { Suspense } from "react";
++
++import { AdminPageSkeleton } from "@/components/admin/common/admin-skeleton";
++import { AdminProductNewContent } from "@/components/page-content/admin-product-form-content";
++
++export const metadata: Metadata = { title: "Nuevo producto" };
++
++/** NUEVO PRODUCTO ( /admin/productos/nuevo ). */
++export default function AdminProductNewPage() {
++  return (
++    <Suspense fallback={<AdminPageSkeleton rows={4} />}>
++      <AdminProductNewContent />
++    </Suspense>
++  );
++}
+diff --git a/src/app/admin/(panel)/productos/page.tsx b/src/app/admin/(panel)/productos/page.tsx
+new file mode 100644
+index 0000000..bc93632
+--- /dev/null
++++ b/src/app/admin/(panel)/productos/page.tsx
+@@ -0,0 +1,19 @@
++import type { Metadata } from "next";
++import { Suspense } from "react";
++
++import { AdminPageSkeleton } from "@/components/admin/common/admin-skeleton";
++import { AdminProductsContent } from "@/components/page-content/admin-products-content";
++
++export const metadata: Metadata = { title: "Productos" };
++
++type Props = { searchParams: Promise<{ aviso?: string | string[] }> };
++
++/** PRODUCTOS ( /admin/productos ): lista, filtros y acciones. */
++export default function AdminProductsPage({ searchParams }: Props) {
++  return (
++    <Suspense fallback={<AdminPageSkeleton />}>
++      {/* Se pasa la PROMESA de `searchParams` sin esperarla aquí. */}
++      <AdminProductsContent searchParamsPromise={searchParams} />
++    </Suspense>
++  );
++}
+diff --git a/src/app/admin/categorias/page.tsx b/src/app/admin/categorias/page.tsx
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/src/app/admin/layout.tsx b/src/app/admin/layout.tsx
+new file mode 100644
+index 0000000..8191b40
+--- /dev/null
++++ b/src/app/admin/layout.tsx
+@@ -0,0 +1,15 @@
++import type { Metadata } from "next";
++import type { ReactNode } from "react";
++
++/**
++ * Común a TODO /admin (login y panel). Los motores de búsqueda NO deben indexar el panel
++ * (`robots: noindex`): no tiene nada que hacer en Google.
++ */
++export const metadata: Metadata = {
++  title: { default: "Panel de administración", template: "%s | Panel" },
++  robots: { index: false, follow: false },
++};
++
++export default function AdminLayout({ children }: { children: ReactNode }) {
++  return children;
++}
+diff --git a/src/app/admin/login/page.tsx b/src/app/admin/login/page.tsx
+index e69de29..f3b847e 100644
+--- a/src/app/admin/login/page.tsx
++++ b/src/app/admin/login/page.tsx
+@@ -0,0 +1,51 @@
++import type { Metadata } from "next";
++import Link from "next/link";
++import { redirect } from "next/navigation";
++import { Suspense } from "react";
++
++import { LoginForm } from "@/components/forms/login-form";
++import { GiftIcon } from "@/components/ui/icons";
++import { siteConfig } from "@/config/site";
++import { getAdminSession } from "@/services/admin-service";
++
++export const metadata: Metadata = { title: "Ingresar" };
++
++/**
++ * Si quien abre el login YA tiene una sesión válida, no tiene sentido mostrarle el formulario:
++ * se le lleva directo al panel. Lee la cookie, así que va dentro de <Suspense>.
++ */
++async function RedirectIfSignedIn() {
++  if (await getAdminSession()) redirect("/admin");
++  return null;
++}
++
++/** LOGIN ( /admin/login ): formulario centrado, sin la barra lateral del panel. */
++export default function AdminLoginPage() {
++  return (
++    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-brand-50 via-cream to-white p-4">
++      <Suspense fallback={null}>
++        <RedirectIfSignedIn />
++      </Suspense>
++
++      <div className="w-full max-w-sm">
++        <div className="mb-6 flex flex-col items-center text-center">
++          <span className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-brand-600 text-3xl text-white">
++            <GiftIcon />
++          </span>
++          <h1 className="text-2xl font-extrabold tracking-tight text-ink">{siteConfig.name}</h1>
++          <p className="text-sm text-muted">Panel de administración</p>
++        </div>
++
++        <div className="rounded-card border border-line bg-white p-6 shadow-card">
++          <LoginForm />
++        </div>
++
++        <p className="mt-5 text-center text-sm">
++          <Link href="/" className="font-semibold text-brand-700 hover:underline">
++            ← Volver a la tienda
++          </Link>
++        </p>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/app/admin/page.tsx b/src/app/admin/page.tsx
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/src/app/admin/productos/page.tsx b/src/app/admin/productos/page.tsx
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index 48d8b4d..cc6ef19 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -1,10 +1,6 @@
+ import type { Metadata } from "next";
+ import { Geist, Geist_Mono } from "next/font/google";
+ 
+-import { AnnouncementBar } from "@/components/layout/announcement-bar";
+-import { SiteFooter } from "@/components/layout/site-footer";
+-import { SiteHeader } from "@/components/layout/site-header";
+-import { WhatsAppFloat } from "@/components/whatsapp/whatsapp-float";
+ import { siteConfig } from "@/config/site";
+ 
+ import "./globals.css";
+@@ -39,34 +35,17 @@ export const metadata: Metadata = {
+ };
+ 
+ /**
+- * LAYOUT RAÍZ: el marco común de todas las páginas.
++ * LAYOUT RAÍZ: lo mínimo común a TODO el sitio (tienda y panel de administración): el documento
++ * HTML, las fuentes y los metadatos por defecto.
+  *
+- *   franja de aviso → encabezado → [contenido de la página] → pie → botón flotante de WhatsApp
+- *
+- * Nada de aquí depende de la API, así que todo el marco es estático y carga al instante.
++ * El marco visible (encabezado, pie...) NO está aquí, porque la tienda y el panel son distintos:
++ *   - tienda → `app/(store)/layout.tsx`  (usa `StoreShell`)
++ *   - panel  → `app/admin/(panel)/layout.tsx`  (usa `AdminShell`)
+  */
+ export default function RootLayout({ children }: LayoutProps<"/">) {
+   return (
+     <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+-      <body className="flex min-h-full flex-col">
+-        {/* Enlace invisible que aparece al navegar con Tab: salta directo al contenido. */}
+-        <a
+-          href="#contenido"
+-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:font-semibold focus:shadow-card-hover"
+-        >
+-          Saltar al contenido
+-        </a>
+-
+-        <AnnouncementBar />
+-        <SiteHeader />
+-
+-        <main id="contenido" className="flex-1">
+-          {children}
+-        </main>
+-
+-        <SiteFooter />
+-        <WhatsAppFloat />
+-      </body>
++      <body className="flex min-h-full flex-col">{children}</body>
+     </html>
+   );
+ }
+diff --git a/src/app/not-found.tsx b/src/app/not-found.tsx
+index 6391b62..7a925f6 100644
+--- a/src/app/not-found.tsx
++++ b/src/app/not-found.tsx
+@@ -1,19 +1,15 @@
+-import { Container } from "@/components/ui/container";
+-import { ButtonLink } from "@/components/ui/button";
+-import { EmptyState } from "@/components/ui/empty-state";
++import { NotFoundView } from "@/components/layout/not-found-view";
++import { StoreShell } from "@/components/layout/store-shell";
+ 
+ /**
+- * Pantalla 404. Next.js la muestra cuando una ruta no existe o cuando una página llama a
+- * `notFound()` (por ejemplo, un producto que no existe o está oculto).
++ * 404 GLOBAL: se usa cuando la URL no coincide con ninguna ruta. Como no pertenece a ningún
++ * grupo, no recibe ningún marco automáticamente: se lo ponemos aquí para que se vea igual que
++ * el 404 de la tienda.
+  */
+-export default function NotFound() {
++export default function GlobalNotFound() {
+   return (
+-    <Container className="py-16 sm:py-24">
+-      <EmptyState
+-        title="No encontramos lo que buscas"
+-        description="Puede que el enlace esté mal escrito o que este regalo ya no esté disponible."
+-        action={<ButtonLink href="/productos">Ver la tienda</ButtonLink>}
+-      />
+-    </Container>
++    <StoreShell>
++      <NotFoundView />
++    </StoreShell>
+   );
+ }
+diff --git a/src/components/admin/admin-icons.tsx b/src/components/admin/admin-icons.tsx
+new file mode 100644
+index 0000000..c180b9b
+--- /dev/null
++++ b/src/components/admin/admin-icons.tsx
+@@ -0,0 +1,38 @@
++/**
++ * Iconos del panel (SVG propios, sin librerías). Igual que los de la tienda: heredan el color
++ * del texto (`currentColor`), son decorativos (`aria-hidden`) y miden 1.25em.
++ */
++import type { SVGProps } from "react";
++
++type IconProps = SVGProps<SVGSVGElement>;
++
++function Svg({ children, ...props }: IconProps) {
++  return (
++    <svg
++      viewBox="0 0 24 24"
++      width="1.25em"
++      height="1.25em"
++      fill="none"
++      stroke="currentColor"
++      strokeWidth={1.8}
++      strokeLinecap="round"
++      strokeLinejoin="round"
++      aria-hidden="true"
++      focusable="false"
++      {...props}
++    >
++      {children}
++    </svg>
++  );
++}
++
++export const PlusIcon = (p: IconProps) => <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>;
++export const PencilIcon = (p: IconProps) => <Svg {...p}><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4ZM13.5 6.5l4 4" /></Svg>;
++export const TrashIcon = (p: IconProps) => <Svg {...p}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3" /></Svg>;
++export const EyeIcon = (p: IconProps) => <Svg {...p}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></Svg>;
++export const EyeOffIcon = (p: IconProps) => <Svg {...p}><path d="M3 3l18 18M10.6 5.1A9.6 9.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6A16.6 16.6 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 4.3-1M9.9 9.9a3 3 0 0 0 4.2 4.2" /></Svg>;
++export const LogOutIcon = (p: IconProps) => <Svg {...p}><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M16 8l4 4-4 4M20 12H9" /></Svg>;
++export const ExternalLinkIcon = (p: IconProps) => <Svg {...p}><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></Svg>;
++export const PackageIcon = (p: IconProps) => <Svg {...p}><path d="M21 8 12 3 3 8v8l9 5 9-5V8ZM3 8l9 5 9-5M12 13v8" /></Svg>;
++export const TagIcon = (p: IconProps) => <Svg {...p}><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9Z" /><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none" /></Svg>;
++export const GridIcon = (p: IconProps) => <Svg {...p}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></Svg>;
+diff --git a/src/components/admin/categories/categories-manager.tsx b/src/components/admin/categories/categories-manager.tsx
+new file mode 100644
+index 0000000..e7a3052
+--- /dev/null
++++ b/src/components/admin/categories/categories-manager.tsx
+@@ -0,0 +1,198 @@
++"use client";
++
++import { useRouter } from "next/navigation";
++import { useState } from "react";
++
++import { CategoryForm } from "@/components/forms/category-form";
++import { Alert } from "@/components/ui/alert";
++import { Button } from "@/components/ui/button";
++import { Dialog } from "@/components/ui/dialog";
++import { EmptyState } from "@/components/ui/empty-state";
++import { AdminApiError, adminRequest } from "@/lib/admin-api-client";
++import type { Category } from "@/types/catalog";
++
++import { EyeIcon, EyeOffIcon, PencilIcon, PlusIcon } from "../admin-icons";
++import { DataTable, Td, Th } from "../common/data-table";
++import { RowButton } from "../common/row-action";
++import { StatusBadge } from "../common/status-badge";
++
++interface CategoriesManagerProps {
++  categories: Category[];
++  /** Cuántos productos tiene cada categoría: { [categoryId]: número }. */
++  productCounts: Record<string, number>;
++}
++
++/** Qué ventana está abierta: crear, editar una categoría concreta, o ninguna. */
++type DialogState = { mode: "create" } | { mode: "edit"; category: Category } | null;
++
++interface Message {
++  tone: "success" | "error";
++  text: string;
++}
++
++/**
++ * Gestión de categorías: tabla con todas (activas y desactivadas) y sus acciones.
++ *
++ * Es un componente de cliente porque tiene estado (qué ventana está abierta, qué fila está
++ * ocupada, mensajes). Los DATOS llegan ya cargados desde el servidor como props; tras cada
++ * acción se llama a `router.refresh()`, que le pide al servidor los datos actualizados.
++ */
++export function CategoriesManager({ categories, productCounts }: CategoriesManagerProps) {
++  const router = useRouter();
++  const [dialog, setDialog] = useState<DialogState>(null);
++  const [busyId, setBusyId] = useState<string | null>(null);
++  const [message, setMessage] = useState<Message | null>(null);
++
++  const goToLogin = () => router.push("/admin/login");
++
++  /** Desactiva o reactiva una categoría (los productos NO se tocan: solo se ocultan/muestran). */
++  async function toggleActive(category: Category) {
++    setBusyId(category.id);
++    setMessage(null);
++    try {
++      await adminRequest("POST", `/api/categorias/${category.id}/${category.isActive ? "desactivar" : "reactivar"}`);
++      setMessage({
++        tone: "success",
++        text: category.isActive
++          ? `«${category.name}» se desactivó. Sus productos ya no se ven en la tienda (no se borraron).`
++          : `«${category.name}» se reactivó. Sus productos visibles vuelven a mostrarse en la tienda.`,
++      });
++      router.refresh();
++    } catch (caught) {
++      if (caught instanceof AdminApiError && caught.isSessionExpired) return goToLogin();
++      setMessage({ tone: "error", text: caught instanceof AdminApiError ? caught.message : "No se pudo cambiar el estado." });
++    } finally {
++      setBusyId(null);
++    }
++  }
++
++  return (
++    <>
++      <div className="mb-4 flex items-center justify-between gap-3">
++        <p className="text-sm text-muted">
++          {categories.length} {categories.length === 1 ? "categoría" : "categorías"}
++        </p>
++        <Button onClick={() => setDialog({ mode: "create" })}>
++          <PlusIcon />
++          Nueva categoría
++        </Button>
++      </div>
++
++      {message && (
++        <Alert tone={message.tone} className="mb-4">
++          {message.text}
++        </Alert>
++      )}
++
++      {categories.length === 0 ? (
++        <EmptyState
++          title="Aún no hay categorías"
++          description="Crea la primera para empezar a organizar tus productos."
++          action={<Button onClick={() => setDialog({ mode: "create" })}>Crear categoría</Button>}
++        />
++      ) : (
++        <>
++          {/* ---- Celular: una TARJETA por categoría. ---- */}
++          <ul className="space-y-3 md:hidden" aria-label="Lista de categorías">
++            {categories.map((category) => (
++              <li key={category.id} className="rounded-card border border-line bg-white p-4 shadow-card">
++                <div className="flex items-start justify-between gap-3">
++                  <div className="min-w-0">
++                    <p className="font-semibold text-ink">{category.name}</p>
++                    <p className="text-xs text-muted">/{category.slug}</p>
++                  </div>
++                  <StatusBadge active={category.isActive} />
++                </div>
++                {category.description && <p className="mt-2 text-sm text-muted">{category.description}</p>}
++                <p className="mt-2 text-xs font-semibold text-ink/70">
++                  {productCounts[category.id] ?? 0} {(productCounts[category.id] ?? 0) === 1 ? "producto" : "productos"}
++                </p>
++                <div className="mt-3 flex flex-wrap gap-1 border-t border-line pt-2">
++                  <RowButton label={`Editar ${category.name}`} onClick={() => setDialog({ mode: "edit", category })}>
++                    <PencilIcon />
++                    Editar
++                  </RowButton>
++                  <RowButton
++                    label={`${category.isActive ? "Desactivar" : "Reactivar"} ${category.name}`}
++                    disabled={busyId === category.id}
++                    onClick={() => toggleActive(category)}
++                  >
++                    {category.isActive ? <EyeOffIcon /> : <EyeIcon />}
++                    {category.isActive ? "Desactivar" : "Reactivar"}
++                  </RowButton>
++                </div>
++              </li>
++            ))}
++          </ul>
++
++          {/* ---- Pantallas medianas y grandes: TABLA. ---- */}
++        <DataTable caption="Lista de categorías" className="hidden md:block">
++          <thead>
++            <tr>
++              <Th>Nombre</Th>
++              <Th className="hidden md:table-cell">Descripción</Th>
++              <Th className="text-right">Productos</Th>
++              <Th>Estado</Th>
++              <Th className="text-right">Acciones</Th>
++            </tr>
++          </thead>
++          <tbody>
++            {categories.map((category) => (
++              <tr key={category.id}>
++                <Td>
++                  <p className="font-semibold text-ink">{category.name}</p>
++                  <p className="text-xs text-muted">/{category.slug}</p>
++                </Td>
++                <Td className="hidden max-w-xs md:table-cell">
++                  <p className="line-clamp-2 text-muted">{category.description ?? "—"}</p>
++                </Td>
++                <Td className="text-right tabular-nums">{productCounts[category.id] ?? 0}</Td>
++                <Td>
++                  <StatusBadge active={category.isActive} />
++                </Td>
++                <Td>
++                  <div className="flex justify-end gap-1">
++                    <RowButton label={`Editar ${category.name}`} onClick={() => setDialog({ mode: "edit", category })}>
++                      <PencilIcon />
++                      Editar
++                    </RowButton>
++                    <RowButton
++                      label={`${category.isActive ? "Desactivar" : "Reactivar"} ${category.name}`}
++                      disabled={busyId === category.id}
++                      onClick={() => toggleActive(category)}
++                    >
++                      {category.isActive ? <EyeOffIcon /> : <EyeIcon />}
++                      {category.isActive ? "Desactivar" : "Reactivar"}
++                    </RowButton>
++                  </div>
++                </Td>
++              </tr>
++            ))}
++          </tbody>
++        </DataTable>
++        </>
++      )}
++
++      <Dialog
++        open={dialog !== null}
++        onClose={() => setDialog(null)}
++        title={dialog?.mode === "edit" ? "Editar categoría" : "Nueva categoría"}
++      >
++        {dialog && (
++          <CategoryForm
++            // `key`: al abrir otra categoría el formulario se reinicia con sus datos.
++            key={dialog.mode === "edit" ? dialog.category.id : "nueva"}
++            category={dialog.mode === "edit" ? dialog.category : undefined}
++            onCancel={() => setDialog(null)}
++            onSessionExpired={goToLogin}
++            onSaved={() => {
++              setDialog(null);
++              setMessage({ tone: "success", text: "Categoría guardada correctamente." });
++              router.refresh();
++            }}
++          />
++        )}
++      </Dialog>
++    </>
++  );
++}
+diff --git a/src/components/admin/common/admin-skeleton.tsx b/src/components/admin/common/admin-skeleton.tsx
+new file mode 100644
+index 0000000..05f6101
+--- /dev/null
++++ b/src/components/admin/common/admin-skeleton.tsx
+@@ -0,0 +1,16 @@
++import { Skeleton } from "@/components/ui/skeleton";
++
++/** Esqueleto de carga de las páginas del panel: título + una tabla con filas. */
++export function AdminPageSkeleton({ rows = 6 }: { rows?: number }) {
++  return (
++    <div role="status" aria-label="Cargando">
++      <Skeleton className="h-9 w-64" />
++      <Skeleton className="mt-3 h-4 w-80 max-w-full" />
++      <div className="mt-8 space-y-3">
++        {Array.from({ length: rows }, (_, index) => (
++          <Skeleton key={index} className="h-16 w-full rounded-card" />
++        ))}
++      </div>
++    </div>
++  );
++}
+diff --git a/src/components/admin/common/data-table.tsx b/src/components/admin/common/data-table.tsx
+new file mode 100644
+index 0000000..039b742
+--- /dev/null
++++ b/src/components/admin/common/data-table.tsx
+@@ -0,0 +1,33 @@
++import type { ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
++
++import { cn } from "@/lib/cn";
++
++/**
++ * Tabla del panel. En pantallas estrechas se desliza horizontalmente en lugar de romper la
++ * página. `caption` describe la tabla para lectores de pantalla (no se ve).
++ */
++export function DataTable({ caption, children, className }: { caption: string; children: ReactNode; className?: string }) {
++  return (
++    <div className={cn("overflow-x-auto rounded-card border border-line bg-white shadow-card", className)}>
++      {/* `[&_tbody_tr:last-child_td]:border-b-0`: quita el borde inferior solo de la ÚLTIMA FILA. */}
++      <table className="w-full min-w-[40rem] border-collapse text-left text-sm [&_tbody_tr:last-child_td]:border-b-0">
++        <caption className="sr-only">{caption}</caption>
++        {children}
++      </table>
++    </div>
++  );
++}
++
++export function Th({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
++  return (
++    <th
++      scope="col"
++      className={cn("border-b border-line bg-cream/60 px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted", className)}
++      {...props}
++    />
++  );
++}
++
++export function Td({ className, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
++  return <td className={cn("border-b border-line px-4 py-3 align-middle", className)} {...props} />;
++}
+diff --git a/src/components/admin/common/page-header.tsx b/src/components/admin/common/page-header.tsx
+new file mode 100644
+index 0000000..7d7f65b
+--- /dev/null
++++ b/src/components/admin/common/page-header.tsx
+@@ -0,0 +1,21 @@
++import type { ReactNode } from "react";
++
++interface PageHeaderProps {
++  title: string;
++  description?: string;
++  /** Botones a la derecha del título (por ejemplo, "Nuevo producto"). */
++  actions?: ReactNode;
++}
++
++/** Cabecera de cada página del panel: título (el <h1>), descripción y acciones. */
++export function PageHeader({ title, description, actions }: PageHeaderProps) {
++  return (
++    <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
++      <div className="min-w-0">
++        <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">{title}</h1>
++        {description && <p className="mt-1 text-sm text-muted">{description}</p>}
++      </div>
++      {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
++    </header>
++  );
++}
+diff --git a/src/components/admin/common/row-action.tsx b/src/components/admin/common/row-action.tsx
+new file mode 100644
+index 0000000..9a4d9d2
+--- /dev/null
++++ b/src/components/admin/common/row-action.tsx
+@@ -0,0 +1,39 @@
++import Link from "next/link";
++import type { ButtonHTMLAttributes, ReactNode } from "react";
++
++import { cn } from "@/lib/cn";
++
++/** Aspecto común de las acciones pequeñas de una fila (Editar, Ocultar, Eliminar...). */
++const styles =
++  "inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold " +
++  "text-ink transition-colors hover:bg-brand-50 hover:text-brand-700 disabled:pointer-events-none disabled:opacity-50";
++
++interface Props {
++  children: ReactNode;
++  /** Texto completo para lectores de pantalla (por ejemplo "Editar Oso grande"). */
++  label: string;
++  danger?: boolean;
++}
++
++/** Acción de fila que ejecuta algo (un <button>). */
++export function RowButton({ children, label, danger, className, ...props }: Props & ButtonHTMLAttributes<HTMLButtonElement>) {
++  return (
++    <button
++      type="button"
++      aria-label={label}
++      className={cn(styles, danger && "text-red-700 hover:bg-red-50 hover:text-red-800", className)}
++      {...props}
++    >
++      {children}
++    </button>
++  );
++}
++
++/** Acción de fila que navega a otra página (un enlace). */
++export function RowLink({ children, label, href }: Props & { href: string }) {
++  return (
++    <Link href={href} aria-label={label} className={styles}>
++      {children}
++    </Link>
++  );
++}
+diff --git a/src/components/admin/common/stat-card.tsx b/src/components/admin/common/stat-card.tsx
+new file mode 100644
+index 0000000..acc6dea
+--- /dev/null
++++ b/src/components/admin/common/stat-card.tsx
+@@ -0,0 +1,30 @@
++import Link from "next/link";
++
++interface StatCardProps {
++  label: string;
++  value: number;
++  /** Línea pequeña bajo el número (por ejemplo, "3 ocultos"). */
++  hint?: string;
++  /** Si se pasa, toda la tarjeta es un enlace. */
++  href?: string;
++}
++
++/** Tarjeta con una cifra grande, para el resumen del panel. */
++export function StatCard({ label, value, hint, href }: StatCardProps) {
++  const content = (
++    <>
++      <p className="text-sm font-semibold text-muted">{label}</p>
++      <p className="mt-1 text-4xl font-extrabold tracking-tight text-ink">{value}</p>
++      {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
++    </>
++  );
++  const classes = "block rounded-card border border-line bg-white p-5 shadow-card";
++
++  return href ? (
++    <Link href={href} className={`${classes} transition-shadow hover:shadow-card-hover`}>
++      {content}
++    </Link>
++  ) : (
++    <div className={classes}>{content}</div>
++  );
++}
+diff --git a/src/components/admin/common/status-badge.tsx b/src/components/admin/common/status-badge.tsx
+new file mode 100644
+index 0000000..d2c489e
+--- /dev/null
++++ b/src/components/admin/common/status-badge.tsx
+@@ -0,0 +1,25 @@
++import { cn } from "@/lib/cn";
++
++interface StatusBadgeProps {
++  active: boolean;
++  activeLabel?: string;
++  inactiveLabel?: string;
++}
++
++/**
++ * Etiqueta de estado (verde = activo, gris = inactivo). El estado se dice con TEXTO y no solo
++ * con el color, para que lo entienda quien no distingue colores o usa lector de pantalla.
++ */
++export function StatusBadge({ active, activeLabel = "Activa", inactiveLabel = "Desactivada" }: StatusBadgeProps) {
++  return (
++    <span
++      className={cn(
++        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold",
++        active ? "bg-green-100 text-green-800" : "bg-stone-200 text-stone-700",
++      )}
++    >
++      <span aria-hidden="true" className={cn("size-1.5 rounded-full", active ? "bg-green-600" : "bg-stone-500")} />
++      {active ? activeLabel : inactiveLabel}
++    </span>
++  );
++}
+diff --git a/src/components/admin/layout/admin-nav-list.tsx b/src/components/admin/layout/admin-nav-list.tsx
+new file mode 100644
+index 0000000..f36c32f
+--- /dev/null
++++ b/src/components/admin/layout/admin-nav-list.tsx
+@@ -0,0 +1,55 @@
++import Link from "next/link";
++
++import { adminConfig } from "@/config/admin";
++import { cn } from "@/lib/cn";
++
++import { GridIcon, PackageIcon, TagIcon } from "../admin-icons";
++
++const icons = {
++  "/admin": GridIcon,
++  "/admin/productos": PackageIcon,
++  "/admin/categorias": TagIcon,
++} as const;
++
++/** ¿El enlace corresponde a la página actual? (`exact`: igual; `prefix`: igual o una subpágina). */
++function isActive(pathname: string | null, href: string, match: "exact" | "prefix"): boolean {
++  if (pathname === null) return false;
++  return match === "exact" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
++}
++
++/**
++ * Lista de enlaces del panel (Resumen, Productos, Categorías). Es PRESENTACIONAL: recibe la
++ * ruta actual y resalta el enlace que corresponde. Con `pathname={null}` no resalta ninguno
++ * (así se ve mientras carga `AdminNav`).
++ *
++ * Celular: fila horizontal deslizable. Escritorio: columna vertical.
++ */
++export function AdminNavList({ pathname }: { pathname: string | null }) {
++  return (
++    <nav aria-label="Panel de administración">
++      <ul className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0">
++        {adminConfig.nav.map((item) => {
++          const active = isActive(pathname, item.href, item.match);
++          const Icon = icons[item.href as keyof typeof icons];
++
++          return (
++            <li key={item.href} className="shrink-0">
++              <Link
++                href={item.href}
++                // `aria-current` le dice al lector de pantalla cuál es la página actual.
++                aria-current={active ? "page" : undefined}
++                className={cn(
++                  "flex min-h-11 items-center gap-2.5 rounded-xl px-3.5 text-sm font-semibold transition-colors",
++                  active ? "bg-brand-600 text-white" : "text-ink hover:bg-brand-50 hover:text-brand-700",
++                )}
++              >
++                <Icon />
++                {item.label}
++              </Link>
++            </li>
++          );
++        })}
++      </ul>
++    </nav>
++  );
++}
+diff --git a/src/components/admin/layout/admin-nav.tsx b/src/components/admin/layout/admin-nav.tsx
+new file mode 100644
+index 0000000..0893d64
+--- /dev/null
++++ b/src/components/admin/layout/admin-nav.tsx
+@@ -0,0 +1,17 @@
++"use client";
++
++import { usePathname } from "next/navigation";
++
++import { AdminNavList } from "./admin-nav-list";
++
++/**
++ * Navegación del panel CON el enlace de la página actual resaltado.
++ *
++ * Necesita conocer la ruta actual (`usePathname`), que solo existe en el navegador: por eso es
++ * un componente de cliente. Como las rutas del panel incluyen partes dinámicas
++ * (/admin/productos/[id]), Next.js exige envolverlo en <Suspense>; mientras tanto se muestra
++ * `AdminNavList` sin resaltado (ver `AdminShell`).
++ */
++export function AdminNav() {
++  return <AdminNavList pathname={usePathname()} />;
++}
+diff --git a/src/components/admin/layout/admin-shell.tsx b/src/components/admin/layout/admin-shell.tsx
+new file mode 100644
+index 0000000..ca7d424
+--- /dev/null
++++ b/src/components/admin/layout/admin-shell.tsx
+@@ -0,0 +1,76 @@
++import Link from "next/link";
++import { Suspense, type ReactNode } from "react";
++
++import { adminConfig } from "@/config/admin";
++import { siteConfig } from "@/config/site";
++import { ButtonLink } from "@/components/ui/button";
++import { GiftIcon } from "@/components/ui/icons";
++
++import { ExternalLinkIcon } from "../admin-icons";
++import { AdminNav } from "./admin-nav";
++import { AdminNavList } from "./admin-nav-list";
++import { AdminUser } from "./admin-user";
++import { LogoutButton } from "./logout-button";
++
++/**
++ * MARCO DEL PANEL DE ADMINISTRACIÓN
++ *
++ *   Escritorio: barra lateral fija a la izquierda + contenido a la derecha.
++ *   Celular:    barra superior (marca + acciones + navegación deslizable) y el contenido debajo.
++ *
++ * Es independiente del marco de la tienda (`StoreShell`): el panel no muestra el encabezado,
++ * el pie ni el botón de WhatsApp de la tienda.
++ */
++export function AdminShell({ children }: { children: ReactNode }) {
++  const viewStore = (
++    // El texto se oculta en celular (solo icono) para que quepa el nombre de la marca; el
++    // `aria-label` conserva el nombre accesible completo.
++    <ButtonLink href="/" variant="ghost" size="sm" target="_blank" rel="noopener noreferrer" aria-label="Ver tienda (se abre en otra pestaña)">
++      <ExternalLinkIcon />
++      <span className="hidden sm:inline">Ver tienda</span>
++    </ButtonLink>
++  );
++
++  return (
++    <div className="min-h-dvh bg-cream lg:grid lg:grid-cols-[16rem_1fr]">
++      <aside className="border-b border-line bg-white lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:border-b-0 lg:border-r">
++        <div className="flex items-center justify-between gap-3 px-4 pt-3 lg:px-5 lg:pt-6">
++          <Link href="/admin" className="flex min-w-0 items-center gap-2.5" aria-label={`${adminConfig.title}, ir al resumen`}>
++            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-xl text-white">
++              <GiftIcon />
++            </span>
++            <span className="min-w-0 leading-tight">
++              <span className="block truncate text-base font-extrabold tracking-tight text-ink">{siteConfig.name}</span>
++              <span className="block truncate text-xs font-semibold text-muted">Panel</span>
++            </span>
++          </Link>
++
++          {/* En celular las acciones van arriba, junto a la marca. */}
++          <div className="flex items-center lg:hidden">
++            {viewStore}
++            <LogoutButton />
++          </div>
++        </div>
++
++        <div className="px-4 py-3 lg:flex-1 lg:px-3 lg:py-6">
++          <Suspense fallback={<AdminNavList pathname={null} />}>
++            <AdminNav />
++          </Suspense>
++        </div>
++
++        {/* En escritorio las acciones van al pie de la barra lateral. */}
++        <div className="hidden space-y-2 border-t border-line p-4 lg:block">
++          <Suspense fallback={<p className="text-xs text-muted">Comprobando sesión…</p>}>
++            <AdminUser />
++          </Suspense>
++          <div className="-ml-3 flex flex-col items-start">
++            {viewStore}
++            <LogoutButton />
++          </div>
++        </div>
++      </aside>
++
++      <main className="min-w-0 px-4 py-6 sm:px-8 sm:py-8">{children}</main>
++    </div>
++  );
++}
+diff --git a/src/components/admin/layout/admin-user.tsx b/src/components/admin/layout/admin-user.tsx
+new file mode 100644
+index 0000000..f4ab149
+--- /dev/null
++++ b/src/components/admin/layout/admin-user.tsx
+@@ -0,0 +1,22 @@
++import { redirect } from "next/navigation";
++
++import { getAdminSession } from "@/services/admin-service";
++
++/**
++ * Muestra el correo del administrador con sesión iniciada.
++ *
++ * Además actúa como GUARDIA de navegación: si no hay sesión válida, redirige al login. (La
++ * seguridad real está en la API, que revisa la cookie en cada petición; esto solo evita que
++ * alguien sin sesión vea el marco del panel vacío.)
++ * Es async y lee la cookie, así que debe usarse dentro de <Suspense>.
++ */
++export async function AdminUser() {
++  const session = await getAdminSession();
++  if (!session) redirect("/admin/login");
++
++  return (
++    <p className="truncate text-xs text-muted" title={session.email ?? undefined}>
++      Sesión: <span className="font-semibold text-ink">{session.email ?? "administrador"}</span>
++    </p>
++  );
++}
+diff --git a/src/components/admin/layout/logout-button.tsx b/src/components/admin/layout/logout-button.tsx
+new file mode 100644
+index 0000000..ea95427
+--- /dev/null
++++ b/src/components/admin/layout/logout-button.tsx
+@@ -0,0 +1,40 @@
++"use client";
++
++import { useRouter } from "next/navigation";
++import { useState } from "react";
++
++import { Button } from "@/components/ui/button";
++import { adminRequest } from "@/lib/admin-api-client";
++
++import { LogOutIcon } from "../admin-icons";
++
++/**
++ * Botón "Salir". Pide a POST /api/auth/logout que borre la cookie de sesión y lleva al login.
++ * Si la petición falla (por ejemplo, sin internet) igual se navega al login: ahí, si la sesión
++ * seguía vigente, se verá de inmediato que no se cerró.
++ */
++export function LogoutButton() {
++  const router = useRouter();
++  const [pending, setPending] = useState(false);
++
++  async function handleClick() {
++    setPending(true);
++    try {
++      await adminRequest("POST", "/api/auth/logout");
++    } catch {
++      // Se ignora a propósito (ver el comentario de arriba).
++    }
++    router.replace("/admin/login");
++    router.refresh();
++    // Con Cache Components, este marco del panel se conserva oculto al salir. Si el botón se
++    // quedara en "Saliendo…", reaparecería bloqueado al volver a iniciar sesión.
++    setPending(false);
++  }
++
++  return (
++    <Button variant="ghost" size="sm" onClick={handleClick} disabled={pending} aria-label="Cerrar sesión">
++      <LogOutIcon />
++      <span className="hidden sm:inline">{pending ? "Saliendo…" : "Salir"}</span>
++    </Button>
++  );
++}
+diff --git a/src/components/admin/products/products-manager.tsx b/src/components/admin/products/products-manager.tsx
+new file mode 100644
+index 0000000..1adfa71
+--- /dev/null
++++ b/src/components/admin/products/products-manager.tsx
+@@ -0,0 +1,307 @@
++"use client";
++
++import Link from "next/link";
++import { useRouter } from "next/navigation";
++import { useMemo, useState } from "react";
++
++import { ProductImage } from "@/components/catalog/product-image";
++import { Alert } from "@/components/ui/alert";
++import { ButtonLink } from "@/components/ui/button";
++import { ConfirmDialog } from "@/components/ui/confirm-dialog";
++import { EmptyState } from "@/components/ui/empty-state";
++import { Input, NativeSelect } from "@/components/ui/input";
++import { AdminApiError, adminRequest } from "@/lib/admin-api-client";
++import { formatPrice } from "@/lib/format-price";
++import type { Category, Product } from "@/types/catalog";
++
++import { EyeIcon, EyeOffIcon, PencilIcon, PlusIcon, TrashIcon } from "../admin-icons";
++import { DataTable, Td, Th } from "../common/data-table";
++import { RowButton, RowLink } from "../common/row-action";
++import { StatusBadge } from "../common/status-badge";
++
++interface ProductActionsProps {
++  product: Product;
++  /** `true` mientras se cambia su visibilidad (se bloquea ese botón). */
++  busy: boolean;
++  onToggle: () => void;
++  onDelete: () => void;
++}
++
++/**
++ * Las tres acciones de un producto (Editar, Ocultar/Mostrar, Eliminar). Se usa tanto en la fila
++ * de la tabla como en la tarjeta de celular, para que ambas vistas se comporten igual.
++ */
++function ProductActions({ product, busy, onToggle, onDelete }: ProductActionsProps) {
++  return (
++    <>
++      <RowLink href={`/admin/productos/${product.id}`} label={`Editar ${product.name}`}>
++        <PencilIcon />
++        Editar
++      </RowLink>
++      <RowButton label={`${product.isAvailable ? "Ocultar" : "Mostrar"} ${product.name}`} disabled={busy} onClick={onToggle}>
++        {product.isAvailable ? <EyeOffIcon /> : <EyeIcon />}
++        {product.isAvailable ? "Ocultar" : "Mostrar"}
++      </RowButton>
++      <RowButton label={`Eliminar ${product.name}`} danger onClick={onDelete}>
++        <TrashIcon />
++        Eliminar
++      </RowButton>
++    </>
++  );
++}
++
++interface ProductsManagerProps {
++  products: Product[];
++  categories: Category[];
++  /** Aviso de confirmación (ej. "Producto creado correctamente.") que llega tras guardar. */
++  notice?: string;
++}
++
++type StatusFilter = "all" | "visible" | "hidden";
++
++interface Message {
++  tone: "success" | "error";
++  text: string;
++}
++
++/**
++ * Gestión de productos: buscador, filtros y tabla con todas las acciones.
++ *
++ * Los filtros se aplican en el navegador sobre la lista que ya llegó del servidor (es una
++ * lista administrativa, no necesita pedir nada a la API para filtrar). Las acciones (ocultar,
++ * mostrar, eliminar) sí llaman a la API y después piden los datos frescos con `router.refresh()`.
++ */
++export function ProductsManager({ products, categories, notice }: ProductsManagerProps) {
++  const router = useRouter();
++  const [query, setQuery] = useState("");
++  const [categoryId, setCategoryId] = useState("");
++  const [status, setStatus] = useState<StatusFilter>("all");
++  const [busyId, setBusyId] = useState<string | null>(null);
++  const [message, setMessage] = useState<Message | null>(null);
++
++  // Eliminación: el producto que se está por borrar, y el estado de esa operación.
++  const [toDelete, setToDelete] = useState<Product | null>(null);
++  const [deleting, setDeleting] = useState(false);
++  const [deleteError, setDeleteError] = useState<string | null>(null);
++
++  const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
++
++  /** Productos que pasan los filtros actuales. */
++  const filtered = useMemo(() => {
++    const text = query.trim().toLowerCase();
++    return products.filter((product) => {
++      if (text && !product.name.toLowerCase().includes(text)) return false;
++      if (categoryId && product.categoryId !== categoryId) return false;
++      if (status === "visible" && !product.isAvailable) return false;
++      if (status === "hidden" && product.isAvailable) return false;
++      return true;
++    });
++  }, [products, query, categoryId, status]);
++
++  const hasFilters = Boolean(query.trim() || categoryId || status !== "all");
++  const goToLogin = () => router.push("/admin/login");
++
++  /** Oculta o muestra un producto en la tienda (PATCH isAvailable). */
++  async function toggleAvailable(product: Product) {
++    setBusyId(product.id);
++    setMessage(null);
++    try {
++      await adminRequest("PATCH", `/api/productos/${product.id}`, { isAvailable: !product.isAvailable });
++      setMessage({
++        tone: "success",
++        text: product.isAvailable ? `«${product.name}» ahora está oculto en la tienda.` : `«${product.name}» ahora es visible en la tienda.`,
++      });
++      router.refresh();
++    } catch (caught) {
++      if (caught instanceof AdminApiError && caught.isSessionExpired) return goToLogin();
++      setMessage({ tone: "error", text: caught instanceof AdminApiError ? caught.message : "No se pudo cambiar la visibilidad." });
++    } finally {
++      setBusyId(null);
++    }
++  }
++
++  /** Elimina definitivamente el producto elegido en la ventana de confirmación. */
++  async function confirmDelete() {
++    if (!toDelete) return;
++    setDeleting(true);
++    setDeleteError(null);
++    try {
++      await adminRequest("DELETE", `/api/productos/${toDelete.id}`);
++      setMessage({ tone: "success", text: `«${toDelete.name}» se eliminó definitivamente.` });
++      setToDelete(null);
++      router.refresh();
++    } catch (caught) {
++      if (caught instanceof AdminApiError && caught.isSessionExpired) return goToLogin();
++      // Por ejemplo un 409: "está referenciado por otros registros, desactívalo".
++      setDeleteError(caught instanceof AdminApiError ? caught.message : "No se pudo eliminar el producto.");
++    } finally {
++      setDeleting(false);
++    }
++  }
++
++  function closeDeleteDialog() {
++    if (deleting) return;
++    setToDelete(null);
++    setDeleteError(null);
++  }
++
++  return (
++    <>
++      {notice && !message && <Alert tone="success" className="mb-4">{notice}</Alert>}
++      {message && <Alert tone={message.tone} className="mb-4">{message.text}</Alert>}
++
++      {/* Barra de herramientas: buscador + filtros + botón de crear. */}
++      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_14rem_11rem_auto]">
++        <Input
++          type="search"
++          aria-label="Buscar producto por nombre"
++          placeholder="Buscar por nombre…"
++          value={query}
++          onChange={(e) => setQuery(e.target.value)}
++        />
++        <NativeSelect aria-label="Filtrar por categoría" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
++          <option value="">Todas las categorías</option>
++          {categories.map((category) => (
++            <option key={category.id} value={category.id}>
++              {category.name}
++              {category.isActive ? "" : " (desactivada)"}
++            </option>
++          ))}
++        </NativeSelect>
++        <NativeSelect aria-label="Filtrar por estado" value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
++          <option value="all">Todos los estados</option>
++          <option value="visible">Visibles</option>
++          <option value="hidden">Ocultos</option>
++        </NativeSelect>
++        <ButtonLink href="/admin/productos/nuevo" className="sm:col-span-2 lg:col-span-1">
++          <PlusIcon />
++          Nuevo producto
++        </ButtonLink>
++      </div>
++
++      <p className="mb-3 text-sm text-muted" aria-live="polite">
++        {hasFilters ? `Mostrando ${filtered.length} de ${products.length} productos` : `${products.length} ${products.length === 1 ? "producto" : "productos"}`}
++      </p>
++
++      {products.length === 0 ? (
++        <EmptyState
++          title="Aún no hay productos"
++          description="Crea el primero para que aparezca en la tienda."
++          action={<ButtonLink href="/admin/productos/nuevo">Crear producto</ButtonLink>}
++        />
++      ) : filtered.length === 0 ? (
++        <EmptyState title="Ningún producto coincide" description="Prueba con otra búsqueda o quita los filtros." />
++      ) : (
++        <>
++          {/* ---- Celular: una TARJETA por producto (una tabla obligaría a deslizar de lado). ---- */}
++          <ul className="space-y-3 md:hidden" aria-label="Lista de productos">
++            {filtered.map((product) => {
++              const category = product.categoryId ? categoriesById.get(product.categoryId) : undefined;
++              const hiddenByCategory = product.isAvailable && category && !category.isActive;
++
++              return (
++                <li key={product.id} className="rounded-card border border-line bg-white p-4 shadow-card">
++                  <div className="flex gap-3">
++                    <ProductImage src={product.imageUrl} alt="" className="size-16 shrink-0 rounded-lg" />
++                    <div className="min-w-0 flex-1">
++                      <Link href={`/admin/productos/${product.id}`} className="block font-semibold text-ink hover:text-brand-700">
++                        {product.name}
++                      </Link>
++                      <p className="truncate text-xs text-muted">{category ? category.name : "Sin categoría"}</p>
++                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
++                        <span className="text-sm font-bold text-brand-700">{formatPrice(product.price)}</span>
++                        <StatusBadge active={product.isAvailable} activeLabel="Visible" inactiveLabel="Oculto" />
++                      </div>
++                      {hiddenByCategory && <p className="mt-1 text-xs text-amber-700">Su categoría está desactivada: no se ve en la tienda.</p>}
++                    </div>
++                  </div>
++                  <div className="mt-3 flex flex-wrap gap-1 border-t border-line pt-2">
++                    <ProductActions
++                      product={product}
++                      busy={busyId === product.id}
++                      onToggle={() => toggleAvailable(product)}
++                      onDelete={() => {
++                        setDeleteError(null);
++                        setToDelete(product);
++                      }}
++                    />
++                  </div>
++                </li>
++              );
++            })}
++          </ul>
++
++          {/* ---- Pantallas medianas y grandes: TABLA. ---- */}
++          <DataTable caption="Lista de productos" className="hidden md:block">
++            <thead>
++              <tr>
++                <Th>Producto</Th>
++                <Th className="hidden 2xl:table-cell">Categoría</Th>
++                <Th className="text-right">Precio</Th>
++                <Th>Estado</Th>
++                <Th className="text-right">Acciones</Th>
++              </tr>
++            </thead>
++            <tbody>
++              {filtered.map((product) => {
++                const category = product.categoryId ? categoriesById.get(product.categoryId) : undefined;
++                // Visible para el administrador pero NO en la tienda: la categoría está desactivada.
++                const hiddenByCategory = product.isAvailable && category && !category.isActive;
++
++                return (
++                  <tr key={product.id}>
++                    <Td>
++                      <div className="flex items-center gap-3">
++                        <ProductImage src={product.imageUrl} alt="" className="size-12 shrink-0 rounded-lg" />
++                        <div className="min-w-0">
++                          <Link href={`/admin/productos/${product.id}`} className="block truncate font-semibold text-ink hover:text-brand-700">
++                            {product.name}
++                          </Link>
++                          <p className="truncate text-xs text-muted">/{product.slug}</p>
++                          {/* En pantallas medianas no hay columna "Categoría" (no cabe): va aquí, bajo el nombre. */}
++                          <p className="truncate text-xs font-medium text-ink/70 2xl:hidden">{category ? category.name : "Sin categoría"}</p>
++                        </div>
++                      </div>
++                    </Td>
++                    <Td className="hidden 2xl:table-cell">{category ? category.name : <span className="text-muted">Sin categoría</span>}</Td>
++                    <Td className="text-right font-semibold tabular-nums">{formatPrice(product.price)}</Td>
++                    <Td>
++                      <StatusBadge active={product.isAvailable} activeLabel="Visible" inactiveLabel="Oculto" />
++                      {hiddenByCategory && (
++                        <p className="mt-1 max-w-[11rem] text-xs text-amber-700">Su categoría está desactivada: no se ve en la tienda.</p>
++                      )}
++                    </Td>
++                    <Td>
++                      <div className="flex justify-end gap-1">
++                        <ProductActions
++                          product={product}
++                          busy={busyId === product.id}
++                          onToggle={() => toggleAvailable(product)}
++                          onDelete={() => {
++                            setDeleteError(null);
++                            setToDelete(product);
++                          }}
++                        />
++                      </div>
++                    </Td>
++                  </tr>
++                );
++              })}
++            </tbody>
++          </DataTable>
++        </>
++      )}
++
++      <ConfirmDialog
++        open={toDelete !== null}
++        onClose={closeDeleteDialog}
++        onConfirm={confirmDelete}
++        title={toDelete ? `¿Eliminar «${toDelete.name}»?` : "Eliminar"}
++        description="Se eliminará definitivamente y no se puede deshacer. Si solo quieres que deje de verse en la tienda, usa «Ocultar»."
++        confirmLabel="Eliminar definitivamente"
++        pending={deleting}
++        error={deleteError}
++      />
++    </>
++  );
++}
+diff --git a/src/components/forms/category-form.tsx b/src/components/forms/category-form.tsx
+new file mode 100644
+index 0000000..2d78848
+--- /dev/null
++++ b/src/components/forms/category-form.tsx
+@@ -0,0 +1,113 @@
++"use client";
++
++import { useState, type FormEvent } from "react";
++
++import { Alert } from "@/components/ui/alert";
++import { Button } from "@/components/ui/button";
++import { Input, Textarea } from "@/components/ui/input";
++import { AdminApiError, adminRequest, type FieldErrors } from "@/lib/admin-api-client";
++import {
++  buildCreateCategoryPayload,
++  buildUpdateCategoryPayload,
++  categoryToFormValues,
++  emptyCategoryForm,
++  validateCategoryForm,
++} from "@/lib/admin-category-form";
++import type { Category } from "@/types/catalog";
++
++import { FormField } from "./form-field";
++
++interface CategoryFormProps {
++  /** Si se pasa, el formulario EDITA esa categoría; si no, crea una nueva. */
++  category?: Category;
++  /** Se llama cuando se guardó correctamente (el padre cierra la ventana y refresca la lista). */
++  onSaved: () => void;
++  onCancel: () => void;
++  /** Se llama si la sesión venció (el padre redirige al login). */
++  onSessionExpired: () => void;
++}
++
++/** Formulario de categoría (crear / editar). Vive dentro de una ventana (`Dialog`). */
++export function CategoryForm({ category, onSaved, onCancel, onSessionExpired }: CategoryFormProps) {
++  const [values, setValues] = useState(category ? categoryToFormValues(category) : emptyCategoryForm);
++  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
++  const [formError, setFormError] = useState<string | null>(null);
++  const [pending, setPending] = useState(false);
++
++  const set = (field: keyof typeof values) => (value: string) => setValues((current) => ({ ...current, [field]: value }));
++
++  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
++    event.preventDefault();
++    setFormError(null);
++
++    // 1) Comprobación rápida en el navegador.
++    const errors = validateCategoryForm(values);
++    setFieldErrors(errors);
++    if (Object.keys(errors).length > 0) return;
++
++    // 2) Al editar, enviamos solo lo que cambió; si no cambió nada, no hay nada que enviar.
++    const changes = category ? buildUpdateCategoryPayload(values, category) : null;
++    if (category && Object.keys(changes ?? {}).length === 0) {
++      onSaved();
++      return;
++    }
++
++    setPending(true);
++    try {
++      if (category) await adminRequest("PATCH", `/api/categorias/${category.id}`, changes);
++      else await adminRequest("POST", "/api/categorias", buildCreateCategoryPayload(values));
++      onSaved();
++    } catch (caught) {
++      if (caught instanceof AdminApiError) {
++        if (caught.isSessionExpired) return onSessionExpired();
++        setFieldErrors(caught.fieldErrors);
++        setFormError(caught.message);
++      } else {
++        setFormError("No se pudo guardar la categoría.");
++      }
++      setPending(false);
++    }
++  }
++
++  return (
++    <form onSubmit={handleSubmit} noValidate className="space-y-4">
++      {formError && <Alert tone="error">{formError}</Alert>}
++
++      <FormField name="name" label="Nombre" error={fieldErrors.name} required>
++        {(field) => (
++          <Input {...field} value={values.name} onChange={(e) => set("name")(e.target.value)} autoFocus maxLength={120} />
++        )}
++      </FormField>
++
++      <FormField
++        name="slug"
++        label="Enlace (slug)"
++        error={fieldErrors.slug}
++        hint={
++          category
++            ? "Si lo cambias, el enlace anterior de esta categoría dejará de funcionar."
++            : "Opcional. Si lo dejas vacío se genera a partir del nombre."
++        }
++      >
++        {(field) => (
++          <Input {...field} value={values.slug} onChange={(e) => set("slug")(e.target.value)} placeholder="ej. peluches" />
++        )}
++      </FormField>
++
++      <FormField name="description" label="Descripción" error={fieldErrors.description} hint="Opcional. Se muestra en la página de la categoría.">
++        {(field) => (
++          <Textarea {...field} value={values.description} onChange={(e) => set("description")(e.target.value)} rows={3} />
++        )}
++      </FormField>
++
++      <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
++        <Button variant="secondary" onClick={onCancel} disabled={pending}>
++          Cancelar
++        </Button>
++        <Button type="submit" disabled={pending}>
++          {pending ? "Guardando…" : category ? "Guardar cambios" : "Crear categoría"}
++        </Button>
++      </div>
++    </form>
++  );
++}
+diff --git a/src/components/forms/form-field.tsx b/src/components/forms/form-field.tsx
+new file mode 100644
+index 0000000..3964641
+--- /dev/null
++++ b/src/components/forms/form-field.tsx
+@@ -0,0 +1,62 @@
++import type { ReactNode } from "react";
++
++/** Atributos que el campo debe llevar para quedar enlazado con su etiqueta, ayuda y error. */
++export interface FieldControlProps {
++  id: string;
++  name: string;
++  invalid: boolean;
++  "aria-describedby": string | undefined;
++}
++
++interface FormFieldProps {
++  /** Nombre del campo: también es el nombre del parámetro que viaja a la API. */
++  name: string;
++  label: string;
++  /** Mensaje de error del campo (si lo hay). */
++  error?: string;
++  /** Texto de ayuda bajo el campo. */
++  hint?: string;
++  required?: boolean;
++  /** Recibe los atributos de accesibilidad para esparcirlos en el control: `<Input {...field} />`. */
++  children: (field: FieldControlProps) => ReactNode;
++}
++
++/**
++ * Un campo de formulario completo: etiqueta + control + ayuda + error.
++ *
++ * Se asegura de la ACCESIBILIDAD, que es fácil olvidar: la etiqueta queda asociada al control
++ * (al tocarla se enfoca), y la ayuda y el error se enlazan con `aria-describedby` para que los
++ * lectores de pantalla los lean junto al campo.
++ */
++export function FormField({ name, label, error, hint, required, children }: FormFieldProps) {
++  const id = `campo-${name}`;
++  const hintId = `${id}-ayuda`;
++  const errorId = `${id}-error`;
++  const describedBy = [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined;
++
++  return (
++    <div className="flex flex-col gap-1.5">
++      <label htmlFor={id} className="text-sm font-semibold text-ink">
++        {label}
++        {required && (
++          <span aria-hidden="true" className="ml-0.5 text-brand-600">
++            *
++          </span>
++        )}
++      </label>
++
++      {children({ id, name, invalid: Boolean(error), "aria-describedby": describedBy })}
++
++      {hint && !error && (
++        <p id={hintId} className="text-xs text-muted">
++          {hint}
++        </p>
++      )}
++      {error && (
++        <p id={errorId} className="text-xs font-semibold text-red-700">
++          {error}
++        </p>
++      )}
++    </div>
++  );
++}
+diff --git a/src/components/forms/image-preview.tsx b/src/components/forms/image-preview.tsx
+new file mode 100644
+index 0000000..a3008b5
+--- /dev/null
++++ b/src/components/forms/image-preview.tsx
+@@ -0,0 +1,40 @@
++"use client";
++
++import Image from "next/image";
++import { useState } from "react";
++
++import { GiftIcon } from "@/components/ui/icons";
++import { isPreviewableImageUrl } from "@/lib/admin-product-form";
++
++/**
++ * Vista previa de la imagen de un producto a partir de su URL.
++ *
++ * Si la URL está vacía, no es http(s) o la imagen no carga, muestra un recuadro de aviso en
++ * lugar de una imagen rota. Quien lo use debe pasar `key={url}`: así, cuando cambia la URL, el
++ * componente se reinicia y vuelve a intentar cargarla (si no, recordaría el fallo anterior).
++ */
++export function ImagePreview({ url }: { url: string }) {
++  const [failed, setFailed] = useState(false);
++  // Mientras se escribe, la URL pasa por estados incompletos: solo se muestra si ya es válida.
++  const valid = isPreviewableImageUrl(url);
++
++  return (
++    <div className="relative aspect-square w-full max-w-[14rem] overflow-hidden rounded-card border border-line bg-brand-50">
++      {valid && !failed ? (
++        <Image
++          src={url.trim()}
++          alt="Vista previa de la imagen del producto"
++          fill
++          unoptimized
++          className="object-cover"
++          onError={() => setFailed(true)}
++        />
++      ) : (
++        <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-sm text-muted">
++          <GiftIcon className="text-3xl text-brand-500/70" />
++          {failed ? "No se pudo cargar la imagen" : "Sin imagen"}
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/src/components/forms/login-form.tsx b/src/components/forms/login-form.tsx
+new file mode 100644
+index 0000000..ea97cf7
+--- /dev/null
++++ b/src/components/forms/login-form.tsx
+@@ -0,0 +1,97 @@
++"use client";
++
++import { useRouter } from "next/navigation";
++import { useState, type FormEvent } from "react";
++
++import { Alert } from "@/components/ui/alert";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { AdminApiError, adminRequest } from "@/lib/admin-api-client";
++
++import { FormField } from "./form-field";
++
++/**
++ * Formulario de inicio de sesión del panel.
++ *
++ * Envía correo y contraseña a POST /api/auth/login. Si son correctos, el SERVIDOR deja la
++ * cookie de sesión (HttpOnly: este código nunca ve el token) y aquí solo se navega al panel.
++ */
++export function LoginForm() {
++  const router = useRouter();
++  const [email, setEmail] = useState("");
++  const [password, setPassword] = useState("");
++  const [error, setError] = useState<string | null>(null);
++  const [pending, setPending] = useState(false);
++
++  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
++    event.preventDefault();
++    setError(null);
++
++    if (!email.trim() || !password) {
++      setError("Escribe tu correo y tu contraseña.");
++      return;
++    }
++
++    setPending(true);
++    try {
++      await adminRequest("POST", "/api/auth/login", { email, password });
++
++      // IMPORTANTE: con Cache Components, Next.js NO destruye esta página al salir de ella: la
++      // conserva oculta, con su estado, por si se vuelve. Si no se limpia aquí, después de
++      // cerrar sesión el formulario reaparecería con la contraseña todavía escrita y el botón
++      // bloqueado en "Ingresando…". Por eso se vacía todo ANTES de navegar.
++      setEmail("");
++      setPassword("");
++      setPending(false);
++
++      // `replace`: el login no debe quedar en el historial (el botón "atrás" no vuelve a él).
++      router.replace("/admin");
++      router.refresh();
++    } catch (caught) {
++      const apiError = caught instanceof AdminApiError ? caught : null;
++      // Aquí un 401 significa credenciales incorrectas (no "sesión vencida"). A propósito el
++      // mensaje es el mismo si falla el correo o la contraseña: no revela qué correos existen.
++      setError(
++        apiError?.status === 401
++          ? "Correo o contraseña incorrectos."
++          : (apiError?.message ?? "No se pudo iniciar sesión. Inténtalo de nuevo."),
++      );
++      setPending(false);
++    }
++  }
++
++  return (
++    <form onSubmit={handleSubmit} noValidate className="space-y-4">
++      {error && <Alert tone="error">{error}</Alert>}
++
++      <FormField name="email" label="Correo electrónico" required>
++        {(field) => (
++          <Input
++            {...field}
++            type="email"
++            autoComplete="username"
++            autoFocus
++            value={email}
++            onChange={(event) => setEmail(event.target.value)}
++          />
++        )}
++      </FormField>
++
++      <FormField name="password" label="Contraseña" required>
++        {(field) => (
++          <Input
++            {...field}
++            type="password"
++            autoComplete="current-password"
++            value={password}
++            onChange={(event) => setPassword(event.target.value)}
++          />
++        )}
++      </FormField>
++
++      <Button type="submit" size="lg" fullWidth disabled={pending}>
++        {pending ? "Ingresando…" : "Ingresar"}
++      </Button>
++    </form>
++  );
++}
+diff --git a/src/components/forms/product-form.tsx b/src/components/forms/product-form.tsx
+index e69de29..b0e1914 100644
+--- a/src/components/forms/product-form.tsx
++++ b/src/components/forms/product-form.tsx
+@@ -0,0 +1,223 @@
++"use client";
++
++import { useRouter } from "next/navigation";
++import { useState, type FormEvent } from "react";
++
++import { Alert } from "@/components/ui/alert";
++import { Button, ButtonLink } from "@/components/ui/button";
++import { Input, NativeSelect, Textarea } from "@/components/ui/input";
++import { AdminApiError, adminRequest, type FieldErrors } from "@/lib/admin-api-client";
++import {
++  buildCreateProductPayload,
++  buildUpdateProductPayload,
++  emptyProductForm,
++  productToFormValues,
++  sanitizePriceInput,
++  validateProductForm,
++  type ProductFormValues,
++} from "@/lib/admin-product-form";
++import { formatPrice } from "@/lib/format-price";
++import type { Category, Product } from "@/types/catalog";
++
++import { FormField } from "./form-field";
++import { ImagePreview } from "./image-preview";
++
++interface ProductFormProps {
++  /** TODAS las categorías (el formulario decide cuáles se pueden elegir). */
++  categories: Category[];
++  /** Si se pasa, el formulario EDITA ese producto; si no, crea uno nuevo. */
++  product?: Product;
++}
++
++/**
++ * Formulario de producto (crear / editar), a pantalla completa.
++ *
++ *  - Crear  → POST  /api/productos
++ *  - Editar → PATCH /api/productos/:id, enviando SOLO los campos modificados
++ *
++ * Al guardar, vuelve a la lista con un aviso de confirmación (`?aviso=...`).
++ * Los errores que devuelve la API se muestran junto al campo correspondiente.
++ */
++export function ProductForm({ categories, product }: ProductFormProps) {
++  const router = useRouter();
++  const [values, setValues] = useState<ProductFormValues>(product ? productToFormValues(product) : emptyProductForm);
++  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
++  const [formError, setFormError] = useState<string | null>(null);
++  const [pending, setPending] = useState(false);
++
++  const isEditing = Boolean(product);
++
++  /**
++   * Categorías que se pueden elegir: las ACTIVAS (la API rechaza productos en categorías
++   * desactivadas) y, al editar, también la categoría actual del producto aunque esté
++   * desactivada, para que el formulario no "pierda" su valor.
++   */
++  const selectable = categories.filter((c) => c.isActive || c.id === product?.categoryId);
++
++  function update<K extends keyof ProductFormValues>(field: K, value: ProductFormValues[K]) {
++    setValues((current) => ({ ...current, [field]: value }));
++  }
++
++  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
++    event.preventDefault();
++    setFormError(null);
++
++    const errors = validateProductForm(values);
++    setFieldErrors(errors);
++    if (Object.keys(errors).length > 0) {
++      setFormError("Revisa los campos marcados.");
++      return;
++    }
++
++    const changes = product ? buildUpdateProductPayload(values, product) : null;
++    if (product && Object.keys(changes ?? {}).length === 0) {
++      router.push("/admin/productos?aviso=sin-cambios");
++      return;
++    }
++
++    setPending(true);
++    try {
++      if (product) await adminRequest("PATCH", `/api/productos/${product.id}`, changes);
++      else await adminRequest("POST", "/api/productos", buildCreateProductPayload(values));
++
++      // Con Cache Components, Next.js conserva esta página OCULTA (con su estado) al salir de
++      // ella. Si no se reinicia aquí, "Nuevo producto" reaparecería con los datos del producto
++      // anterior y el botón bloqueado en "Guardando…".
++      if (!product) setValues(emptyProductForm);
++      setFieldErrors({});
++      setPending(false);
++
++      // La lista es una ruta dinámica que siempre pide datos frescos al servidor: basta con
++      // navegar (un `router.refresh()` extra solo duplicaría la petición).
++      router.push(`/admin/productos?aviso=${product ? "producto-actualizado" : "producto-creado"}`);
++    } catch (caught) {
++      if (caught instanceof AdminApiError) {
++        if (caught.isSessionExpired) {
++          router.push("/admin/login");
++          return;
++        }
++        setFieldErrors(caught.fieldErrors);
++        setFormError(caught.message);
++      } else {
++        setFormError("No se pudo guardar el producto.");
++      }
++      setPending(false);
++    }
++  }
++
++  const priceNumber = Number(values.price);
++
++  return (
++    <form onSubmit={handleSubmit} noValidate className="grid gap-8 lg:grid-cols-[1fr_16rem]">
++      <div className="space-y-5">
++        {formError && <Alert tone="error">{formError}</Alert>}
++
++        <FormField name="name" label="Nombre" error={fieldErrors.name} required>
++          {(field) => (
++            <Input {...field} value={values.name} onChange={(e) => update("name", e.target.value)} maxLength={200} autoFocus={!isEditing} />
++          )}
++        </FormField>
++
++        <FormField
++          name="price"
++          label="Precio (en pesos)"
++          error={fieldErrors.price}
++          hint="Solo números, sin puntos ni comas. Ejemplo: 89900"
++          required
++        >
++          {(field) => (
++            <>
++              <Input
++                {...field}
++                inputMode="numeric"
++                autoComplete="off"
++                value={values.price}
++                onChange={(e) => update("price", sanitizePriceInput(e.target.value))}
++                placeholder="89900"
++              />
++              {/* Confirmación visual: así se ve el precio en la tienda. Evita errores de ceros. */}
++              {priceNumber > 0 && (
++                <p className="text-sm font-semibold text-brand-700" aria-live="polite">
++                  Se verá como {formatPrice(priceNumber)}
++                </p>
++              )}
++            </>
++          )}
++        </FormField>
++
++        <FormField name="categoryId" label="Categoría" error={fieldErrors.categoryId} required>
++          {(field) => (
++            <NativeSelect {...field} value={values.categoryId} onChange={(e) => update("categoryId", e.target.value)}>
++              <option value="">Selecciona una categoría</option>
++              {selectable.map((category) => (
++                <option key={category.id} value={category.id}>
++                  {category.name}
++                  {category.isActive ? "" : " (desactivada)"}
++                </option>
++              ))}
++            </NativeSelect>
++          )}
++        </FormField>
++
++        <FormField name="description" label="Descripción" error={fieldErrors.description} hint="Opcional. Se respetan los saltos de línea.">
++          {(field) => (
++            <Textarea {...field} rows={5} value={values.description} onChange={(e) => update("description", e.target.value)} />
++          )}
++        </FormField>
++
++        <FormField
++          name="slug"
++          label="Enlace (slug)"
++          error={fieldErrors.slug}
++          hint={
++            isEditing
++              ? "Si lo cambias, el enlace anterior de este producto dejará de funcionar."
++              : "Opcional. Si lo dejas vacío se genera a partir del nombre."
++          }
++        >
++          {(field) => (
++            <Input {...field} value={values.slug} onChange={(e) => update("slug", e.target.value)} placeholder="ej. oso-grande" />
++          )}
++        </FormField>
++
++        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-4">
++          <input
++            type="checkbox"
++            name="isAvailable"
++            checked={values.isAvailable}
++            onChange={(e) => update("isAvailable", e.target.checked)}
++            className="mt-0.5 size-5 accent-[var(--color-brand-600)]"
++          />
++          <span>
++            <span className="block text-sm font-semibold text-ink">Visible en la tienda</span>
++            <span className="block text-xs text-muted">Si lo desmarcas, el producto queda oculto para los clientes.</span>
++          </span>
++        </label>
++
++        <div className="flex flex-col-reverse gap-3 border-t border-line pt-5 sm:flex-row sm:justify-end">
++          <ButtonLink href="/admin/productos" variant="secondary">
++            Cancelar
++          </ButtonLink>
++          <Button type="submit" disabled={pending}>
++            {pending ? "Guardando…" : isEditing ? "Guardar cambios" : "Crear producto"}
++          </Button>
++        </div>
++      </div>
++
++      {/* Columna derecha: la imagen con su vista previa en vivo. */}
++      <aside className="space-y-3">
++        <FormField
++          name="imageUrl"
++          label="URL de la imagen"
++          error={fieldErrors.imageUrl}
++          hint="Opcional. Debe empezar por https://"
++        >
++          {(field) => (
++            <Input {...field} type="url" inputMode="url" value={values.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="https://…" />
++          )}
++        </FormField>
++        <ImagePreview key={values.imageUrl} url={values.imageUrl} />
++      </aside>
++    </form>
++  );
++}
+diff --git a/src/components/layout/not-found-view.tsx b/src/components/layout/not-found-view.tsx
+new file mode 100644
+index 0000000..c000bec
+--- /dev/null
++++ b/src/components/layout/not-found-view.tsx
+@@ -0,0 +1,19 @@
++import { ButtonLink } from "../ui/button";
++import { Container } from "../ui/container";
++import { EmptyState } from "../ui/empty-state";
++
++/**
++ * Contenido de la pantalla 404 de la TIENDA. Se usa dentro del marco de la tienda, tanto
++ * cuando una página llama a `notFound()` como cuando la URL no existe.
++ */
++export function NotFoundView() {
++  return (
++    <Container className="py-16 sm:py-24">
++      <EmptyState
++        title="No encontramos lo que buscas"
++        description="Puede que el enlace esté mal escrito o que este regalo ya no esté disponible."
++        action={<ButtonLink href="/productos">Ver la tienda</ButtonLink>}
++      />
++    </Container>
++  );
++}
+diff --git a/src/components/layout/store-shell.tsx b/src/components/layout/store-shell.tsx
+new file mode 100644
+index 0000000..b863652
+--- /dev/null
++++ b/src/components/layout/store-shell.tsx
+@@ -0,0 +1,41 @@
++import type { ReactNode } from "react";
++
++import { WhatsAppFloat } from "../whatsapp/whatsapp-float";
++import { AnnouncementBar } from "./announcement-bar";
++import { SiteFooter } from "./site-footer";
++import { SiteHeader } from "./site-header";
++
++/**
++ * MARCO DE LA TIENDA PÚBLICA:
++ *
++ *   franja de aviso → encabezado → [contenido de la página] → pie → botón flotante de WhatsApp
++ *
++ * Antes vivía en el layout raíz; ahora está aquí para que el PANEL DE ADMINISTRACIÓN (que
++ * tiene su propio marco) no muestre el encabezado ni el pie de la tienda. Lo usan el layout
++ * del grupo `(store)` y la página 404 global.
++ *
++ * Nada de aquí depende de la API para el HTML inicial, así que el marco carga al instante.
++ */
++export function StoreShell({ children }: { children: ReactNode }) {
++  return (
++    <>
++      {/* Enlace invisible que aparece al navegar con Tab: salta directo al contenido. */}
++      <a
++        href="#contenido"
++        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:font-semibold focus:shadow-card-hover"
++      >
++        Saltar al contenido
++      </a>
++
++      <AnnouncementBar />
++      <SiteHeader />
++
++      <main id="contenido" className="flex-1">
++        {children}
++      </main>
++
++      <SiteFooter />
++      <WhatsAppFloat />
++    </>
++  );
++}
+diff --git a/src/components/page-content/admin-categories-content.tsx b/src/components/page-content/admin-categories-content.tsx
+new file mode 100644
+index 0000000..4ce0b6f
+--- /dev/null
++++ b/src/components/page-content/admin-categories-content.tsx
+@@ -0,0 +1,24 @@
++import { CategoriesManager } from "@/components/admin/categories/categories-manager";
++import { PageHeader } from "@/components/admin/common/page-header";
++import { getAdminCategories, getAdminProducts } from "@/services/admin-service";
++
++/** Carga las categorías (también las desactivadas) y cuántos productos tiene cada una. */
++export async function AdminCategoriesContent() {
++  const [categories, products] = await Promise.all([getAdminCategories(), getAdminProducts()]);
++
++  // { idCategoría: cantidad de productos }
++  const productCounts: Record<string, number> = {};
++  for (const product of products) {
++    if (product.categoryId) productCounts[product.categoryId] = (productCounts[product.categoryId] ?? 0) + 1;
++  }
++
++  return (
++    <>
++      <PageHeader
++        title="Categorías"
++        description="Organiza tus productos. Al desactivar una categoría, sus productos dejan de verse en la tienda (no se borran)."
++      />
++      <CategoriesManager categories={categories} productCounts={productCounts} />
++    </>
++  );
++}
+diff --git a/src/components/page-content/admin-dashboard-content.tsx b/src/components/page-content/admin-dashboard-content.tsx
+new file mode 100644
+index 0000000..f4e833d
+--- /dev/null
++++ b/src/components/page-content/admin-dashboard-content.tsx
+@@ -0,0 +1,83 @@
++import Link from "next/link";
++
++import { ProductImage } from "@/components/catalog/product-image";
++import { PlusIcon } from "@/components/admin/admin-icons";
++import { PageHeader } from "@/components/admin/common/page-header";
++import { StatCard } from "@/components/admin/common/stat-card";
++import { Alert } from "@/components/ui/alert";
++import { ButtonLink } from "@/components/ui/button";
++import { formatPrice } from "@/lib/format-price";
++import { getAdminCategories, getAdminProducts } from "@/services/admin-service";
++
++/**
++ * Resumen del panel: cifras clave, un aviso si hay productos que el administrador cree
++ * visibles pero que NO se ven en la tienda, y los últimos productos creados.
++ */
++export async function AdminDashboardContent() {
++  // Las dos listas se piden a la vez.
++  const [products, categories] = await Promise.all([getAdminProducts(), getAdminCategories()]);
++
++  const visible = products.filter((p) => p.isAvailable).length;
++  const activeCategories = categories.filter((c) => c.isActive).length;
++
++  // Marcados como visibles, pero su categoría está desactivada → la tienda no los muestra.
++  const inactiveCategoryIds = new Set(categories.filter((c) => !c.isActive).map((c) => c.id));
++  const hiddenByCategory = products.filter((p) => p.isAvailable && p.categoryId && inactiveCategoryIds.has(p.categoryId)).length;
++
++  const recent = [...products].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
++
++  return (
++    <>
++      <PageHeader
++        title="Resumen"
++        description="Un vistazo rápido a tu tienda."
++        actions={
++          <ButtonLink href="/admin/productos/nuevo">
++            <PlusIcon />
++            Nuevo producto
++          </ButtonLink>
++        }
++      />
++
++      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
++        <StatCard label="Productos visibles" value={visible} hint="Los que ven tus clientes" href="/admin/productos" />
++        <StatCard label="Productos ocultos" value={products.length - visible} hint="Solo los ves tú" href="/admin/productos" />
++        <StatCard label="Categorías activas" value={activeCategories} href="/admin/categorias" />
++        <StatCard label="Categorías desactivadas" value={categories.length - activeCategories} href="/admin/categorias" />
++      </div>
++
++      {hiddenByCategory > 0 && (
++        <Alert tone="info" className="mt-6">
++          {hiddenByCategory === 1 ? "Hay 1 producto marcado como visible que no aparece" : `Hay ${hiddenByCategory} productos marcados como visibles que no aparecen`}{" "}
++          en la tienda porque su categoría está desactivada.{" "}
++          <Link href="/admin/categorias" className="font-bold underline">
++            Revisar categorías
++          </Link>
++        </Alert>
++      )}
++
++      <section className="mt-8" aria-labelledby="recientes">
++        <h2 id="recientes" className="mb-3 text-lg font-bold text-ink">
++          Últimos productos
++        </h2>
++        {recent.length === 0 ? (
++          <p className="rounded-card border border-dashed border-line bg-white p-6 text-center text-sm text-muted">
++            Aún no hay productos. Crea el primero con el botón «Nuevo producto».
++          </p>
++        ) : (
++          <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-white shadow-card">
++            {recent.map((product) => (
++              <li key={product.id}>
++                <Link href={`/admin/productos/${product.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-brand-50">
++                  <ProductImage src={product.imageUrl} alt="" className="size-12 shrink-0 rounded-lg" />
++                  <span className="min-w-0 flex-1 truncate font-semibold text-ink">{product.name}</span>
++                  <span className="shrink-0 text-sm font-semibold text-brand-700">{formatPrice(product.price)}</span>
++                </Link>
++              </li>
++            ))}
++          </ul>
++        )}
++      </section>
++    </>
++  );
++}
+diff --git a/src/components/page-content/admin-product-form-content.tsx b/src/components/page-content/admin-product-form-content.tsx
+new file mode 100644
+index 0000000..d7769f5
+--- /dev/null
++++ b/src/components/page-content/admin-product-form-content.tsx
+@@ -0,0 +1,56 @@
++import { notFound } from "next/navigation";
++
++import { PageHeader } from "@/components/admin/common/page-header";
++import { ProductForm } from "@/components/forms/product-form";
++import { ButtonLink } from "@/components/ui/button";
++import { getAdminCategories, getAdminProduct } from "@/services/admin-service";
++
++/** Página "Nuevo producto": solo necesita las categorías para el selector. */
++export async function AdminProductNewContent() {
++  const categories = await getAdminCategories();
++
++  return (
++    <>
++      <PageHeader title="Nuevo producto" description="Completa los datos. Podrás cambiarlos después." />
++      <ProductForm categories={categories} />
++    </>
++  );
++}
++
++interface AdminProductEditContentProps {
++  /** Promesa con el `id` de la URL; se espera aquí dentro del <Suspense>. */
++  paramsPromise: Promise<{ id: string }>;
++}
++
++/** Página "Editar producto": carga el producto (también si está oculto) y las categorías. */
++export async function AdminProductEditContent({ paramsPromise }: AdminProductEditContentProps) {
++  const { id } = await paramsPromise;
++  const [product, categories] = await Promise.all([getAdminProduct(id), getAdminCategories()]);
++
++  if (!product) notFound();
++
++  return (
++    <>
++      <PageHeader
++        title="Editar producto"
++        description={product.name}
++        actions={
++          // Solo tiene sentido enlazar a la tienda si el producto se puede ver allí.
++          product.isAvailable ? (
++            <ButtonLink href={`/productos/${product.slug}`} variant="secondary" size="sm" target="_blank" rel="noopener noreferrer">
++              Ver en la tienda
++            </ButtonLink>
++          ) : undefined
++        }
++      />
++      {/*
++        `key` = id + fecha de última modificación. Next.js conserva las páginas visitadas (con
++        su estado de React). Si el producto cambió mientras tanto (por ejemplo, se ocultó desde
++        la lista), la `key` distinta fuerza a React a crear el formulario de nuevo con los datos
++        ACTUALES. Sin esto, el formulario conservado mostraría datos viejos y, al guardar,
++        revertiría el cambio sin que nadie lo note.
++      */}
++      <ProductForm key={`${product.id}:${product.updatedAt}`} categories={categories} product={product} />
++    </>
++  );
++}
+diff --git a/src/components/page-content/admin-products-content.tsx b/src/components/page-content/admin-products-content.tsx
+new file mode 100644
+index 0000000..cb1e381
+--- /dev/null
++++ b/src/components/page-content/admin-products-content.tsx
+@@ -0,0 +1,27 @@
++import { PageHeader } from "@/components/admin/common/page-header";
++import { ProductsManager } from "@/components/admin/products/products-manager";
++import { adminConfig, type AdminNoticeKey } from "@/config/admin";
++import { firstParam } from "@/lib/search-params";
++import { getAdminCategories, getAdminProducts } from "@/services/admin-service";
++
++interface AdminProductsContentProps {
++  /** `?aviso=...` llega como PROMESA y se espera aquí, dentro del <Suspense> (ver las otras páginas). */
++  searchParamsPromise: Promise<{ aviso?: string | string[] }>;
++}
++
++/** Carga todos los productos (también los ocultos) y las categorías. */
++export async function AdminProductsContent({ searchParamsPromise }: AdminProductsContentProps) {
++  const { aviso } = await searchParamsPromise;
++  const [products, categories] = await Promise.all([getAdminProducts(), getAdminCategories()]);
++
++  // Solo se muestran avisos de la lista permitida: un texto cualquiera en la URL se ignora.
++  const key = firstParam(aviso);
++  const notice = key && key in adminConfig.notices ? adminConfig.notices[key as AdminNoticeKey] : undefined;
++
++  return (
++    <>
++      <PageHeader title="Productos" description="Crea, edita, oculta o elimina los productos de la tienda." />
++      <ProductsManager products={products} categories={categories} notice={notice} />
++    </>
++  );
++}
+diff --git a/src/components/ui/alert.tsx b/src/components/ui/alert.tsx
+new file mode 100644
+index 0000000..a124577
+--- /dev/null
++++ b/src/components/ui/alert.tsx
+@@ -0,0 +1,33 @@
++import type { ReactNode } from "react";
++
++import { cn } from "@/lib/cn";
++
++type Tone = "error" | "success" | "info";
++
++const tones: Record<Tone, string> = {
++  error: "border-red-200 bg-red-50 text-red-800",
++  success: "border-green-200 bg-green-50 text-green-800",
++  info: "border-brand-100 bg-brand-50 text-brand-700",
++};
++
++interface AlertProps {
++  tone?: Tone;
++  children: ReactNode;
++  className?: string;
++}
++
++/**
++ * Mensaje destacado (error, éxito o información).
++ * Los errores usan `role="alert"` (el lector de pantalla los anuncia al instante); el resto,
++ * `role="status"` (los anuncia con calma, sin interrumpir).
++ */
++export function Alert({ tone = "info", children, className }: AlertProps) {
++  return (
++    <div
++      role={tone === "error" ? "alert" : "status"}
++      className={cn("rounded-xl border px-4 py-3 text-sm font-medium", tones[tone], className)}
++    >
++      {children}
++    </div>
++  );
++}
+diff --git a/src/components/ui/confirm-dialog.tsx b/src/components/ui/confirm-dialog.tsx
+new file mode 100644
+index 0000000..f7f09b1
+--- /dev/null
++++ b/src/components/ui/confirm-dialog.tsx
+@@ -0,0 +1,47 @@
++"use client";
++
++import type { ReactNode } from "react";
++
++import { Alert } from "./alert";
++import { Button } from "./button";
++import { DangerButton } from "./danger-button";
++import { Dialog } from "./dialog";
++
++interface ConfirmDialogProps {
++  open: boolean;
++  onClose: () => void;
++  /** Se ejecuta al pulsar el botón de confirmar. */
++  onConfirm: () => void;
++  title: string;
++  description?: string;
++  /** Texto del botón de confirmar (por ejemplo "Eliminar"). */
++  confirmLabel: string;
++  /** `true` mientras la acción está en curso: se bloquean los botones. */
++  pending?: boolean;
++  /** Mensaje de error si la acción falló. */
++  error?: string | null;
++  children?: ReactNode;
++}
++
++/**
++ * Pregunta "¿Seguro?" antes de una acción destructiva. El botón de confirmar es rojo y el de
++ * cancelar es el que queda enfocado primero (el borrado accidental con Enter es más difícil).
++ */
++export function ConfirmDialog({
++  open, onClose, onConfirm, title, description, confirmLabel, pending, error, children,
++}: ConfirmDialogProps) {
++  return (
++    <Dialog open={open} onClose={onClose} title={title} description={description}>
++      {children}
++      {error && <Alert tone="error" className="mb-4">{error}</Alert>}
++      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
++        <Button variant="secondary" onClick={onClose} disabled={pending} autoFocus>
++          Cancelar
++        </Button>
++        <DangerButton onClick={onConfirm} disabled={pending}>
++          {pending ? "Eliminando…" : confirmLabel}
++        </DangerButton>
++      </div>
++    </Dialog>
++  );
++}
+diff --git a/src/components/ui/danger-button.tsx b/src/components/ui/danger-button.tsx
+new file mode 100644
+index 0000000..a3b4927
+--- /dev/null
++++ b/src/components/ui/danger-button.tsx
+@@ -0,0 +1,22 @@
++import type { ButtonHTMLAttributes } from "react";
++
++import { cn } from "@/lib/cn";
++
++/**
++ * Botón rojo para acciones destructivas e irreversibles (por ejemplo, eliminar un producto).
++ * Es un componente aparte, y no una variante de `Button`, para no mezclar clases de color en
++ * conflicto. Mismas medidas que `Button` (≥ 44px de alto: fácil de tocar).
++ */
++export function DangerButton({ className, type = "button", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
++  return (
++    <button
++      type={type}
++      className={cn(
++        "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-red-700 px-5 text-sm font-semibold text-white",
++        "transition-colors hover:bg-red-800 disabled:pointer-events-none disabled:opacity-50",
++        className,
++      )}
++      {...props}
++    />
++  );
++}
+diff --git a/src/components/ui/dialog.tsx b/src/components/ui/dialog.tsx
+new file mode 100644
+index 0000000..6b19c62
+--- /dev/null
++++ b/src/components/ui/dialog.tsx
+@@ -0,0 +1,64 @@
++"use client";
++
++import { useEffect, useId, useRef, type ReactNode } from "react";
++
++interface DialogProps {
++  open: boolean;
++  /** Se llama al cerrar: con Escape, al pulsar fuera de la ventana o con un botón. */
++  onClose: () => void;
++  title: string;
++  description?: string;
++  children: ReactNode;
++}
++
++/**
++ * Ventana modal accesible, construida sobre el elemento nativo <dialog>.
++ *
++ * Por qué <dialog> y no una ventana hecha a mano: el navegador ya se encarga de lo difícil
++ * (atrapar el foco dentro de la ventana, cerrar con Escape, bloquear lo de atrás, anunciarla a
++ * los lectores de pantalla), así que no hay que reimplementarlo ni se puede hacer mal.
++ *
++ * El contenido solo se monta mientras está abierta: cada vez que se abre, los formularios
++ * empiezan limpios.
++ */
++export function Dialog({ open, onClose, title, description, children }: DialogProps) {
++  const ref = useRef<HTMLDialogElement>(null);
++  const titleId = useId();
++  const descriptionId = useId();
++
++  // Sincroniza el estado `open` de React con el del elemento <dialog>.
++  useEffect(() => {
++    const dialog = ref.current;
++    if (!dialog) return;
++    if (open && !dialog.open) dialog.showModal();
++    if (!open && dialog.open) dialog.close();
++  }, [open]);
++
++  return (
++    <dialog
++      ref={ref}
++      onClose={onClose}
++      // Pulsar sobre el fondo oscuro (que cuenta como un clic sobre el propio <dialog>) cierra.
++      onClick={(event) => {
++        if (event.target === ref.current) onClose();
++      }}
++      aria-labelledby={titleId}
++      aria-describedby={description ? descriptionId : undefined}
++      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-card border-0 bg-white p-0 text-ink shadow-card-hover backdrop:bg-ink/50"
++    >
++      {open && (
++        <div className="p-6">
++          <h2 id={titleId} className="text-xl font-bold tracking-tight">
++            {title}
++          </h2>
++          {description && (
++            <p id={descriptionId} className="mt-1 text-sm text-muted">
++              {description}
++            </p>
++          )}
++          <div className="mt-5">{children}</div>
++        </div>
++      )}
++    </dialog>
++  );
++}
+diff --git a/src/components/ui/input.tsx b/src/components/ui/input.tsx
+index e69de29..11af126 100644
+--- a/src/components/ui/input.tsx
++++ b/src/components/ui/input.tsx
+@@ -0,0 +1,59 @@
++import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
++
++import { cn } from "@/lib/cn";
++
++/**
++ * ============================================================================
++ * CAMPOS DE FORMULARIO
++ * ============================================================================
++ * Input, Textarea y NativeSelect comparten el MISMO aspecto (`controlStyles`), así todos los
++ * formularios del panel se ven iguales. Se usan junto a `FormField` (etiqueta + error).
++ *
++ * Los tres aceptan `invalid`: pinta el borde en rojo y marca el campo con `aria-invalid`
++ * para que los lectores de pantalla anuncien el error.
++ */
++
++/** Clases comunes de todos los controles. */
++const controlStyles =
++  "w-full rounded-xl border bg-white px-4 text-sm text-ink placeholder:text-muted/70 " +
++  "transition-colors hover:border-brand-500 disabled:cursor-not-allowed disabled:bg-cream disabled:opacity-70";
++
++function borderFor(invalid?: boolean): string {
++  return invalid ? "border-red-600" : "border-line";
++}
++
++interface InvalidProp {
++  /** `true` si el campo tiene un error: borde rojo y `aria-invalid`. */
++  invalid?: boolean;
++}
++
++export function Input({ invalid, className, ...props }: InputHTMLAttributes<HTMLInputElement> & InvalidProp) {
++  return (
++    <input
++      aria-invalid={invalid || undefined}
++      className={cn(controlStyles, "min-h-11", borderFor(invalid), className)}
++      {...props}
++    />
++  );
++}
++
++export function Textarea({ invalid, className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & InvalidProp) {
++  return (
++    <textarea
++      aria-invalid={invalid || undefined}
++      className={cn(controlStyles, "min-h-28 py-3", borderFor(invalid), className)}
++      {...props}
++    />
++  );
++}
++
++/** Desplegable NATIVO del navegador (en celular abre el selector del sistema). */
++export function NativeSelect({ invalid, className, ...props }: SelectHTMLAttributes<HTMLSelectElement> & InvalidProp) {
++  return (
++    <select
++      aria-invalid={invalid || undefined}
++      className={cn(controlStyles, "min-h-11 font-medium", borderFor(invalid), className)}
++      {...props}
++    />
++  );
++}
+diff --git a/src/config/admin.ts b/src/config/admin.ts
+new file mode 100644
+index 0000000..ae2e870
+--- /dev/null
++++ b/src/config/admin.ts
+@@ -0,0 +1,30 @@
++/**
++ * ============================================================================
++ * CONFIGURACIÓN DEL PANEL DE ADMINISTRACIÓN
++ * ============================================================================
++ * Textos y enlaces del panel, separados del diseño.
++ */
++export const adminConfig = {
++  /** Nombre que aparece en la barra lateral del panel. */
++  title: "Panel de administración",
++
++  /** Enlaces de la navegación del panel. `match` indica cuándo se resalta como "activo". */
++  nav: [
++    { label: "Resumen", href: "/admin", match: "exact" },
++    { label: "Productos", href: "/admin/productos", match: "prefix" },
++    { label: "Categorías", href: "/admin/categorias", match: "prefix" },
++  ],
++
++  /**
++   * Avisos de confirmación. Tras guardar, el formulario redirige a la lista con `?aviso=<clave>`
++   * y la lista muestra el mensaje correspondiente. Solo se aceptan estas claves (un texto
++   * cualquiera en la URL se ignora): así nadie puede mostrar mensajes inventados en el panel.
++   */
++  notices: {
++    "producto-creado": "Producto creado correctamente.",
++    "producto-actualizado": "Producto actualizado correctamente.",
++    "sin-cambios": "No había cambios que guardar.",
++  },
++} as const;
++
++export type AdminNoticeKey = keyof typeof adminConfig.notices;
+diff --git a/src/lib/admin-api-client.ts b/src/lib/admin-api-client.ts
+new file mode 100644
+index 0000000..4cd67cf
+--- /dev/null
++++ b/src/lib/admin-api-client.ts
+@@ -0,0 +1,107 @@
++/**
++ * ============================================================================
++ * CLIENTE HTTP DEL PANEL (en el navegador)
++ * ============================================================================
++ * Envía las acciones del administrador (crear, editar, ocultar, eliminar, iniciar y cerrar
++ * sesión) a nuestros endpoints /api/*. Corre en el NAVEGADOR (desde componentes de cliente),
++ * por eso usa rutas relativas y el navegador adjunta la cookie de sesión por sí solo.
++ *
++ * Traduce las respuestas de error de la API a un `AdminApiError` con:
++ *   - `message`: texto en español listo para mostrar,
++ *   - `fieldErrors`: el error de cada campo (para pintarlo junto al campo del formulario).
++ */
++
++/** Errores por campo: { price: "El precio debe ser mayor que cero", ... }. */
++export type FieldErrors = Record<string, string>;
++
++/** Forma de los errores que devuelve nuestra API. */
++interface ApiErrorBody {
++  error?: {
++    code?: string;
++    message?: string;
++    details?: Array<{ field?: string; message?: string }>;
++  };
++}
++
++export class AdminApiError extends Error {
++  readonly status: number;
++  readonly code: string | undefined;
++  readonly fieldErrors: FieldErrors;
++
++  constructor(status: number, code: string | undefined, message: string, fieldErrors: FieldErrors = {}) {
++    super(message);
++    this.name = "AdminApiError";
++    this.status = status;
++    this.code = code;
++    this.fieldErrors = fieldErrors;
++  }
++
++  /** `true` si la sesión venció o no existe (hay que volver a iniciar sesión). */
++  get isSessionExpired(): boolean {
++    return this.status === 401;
++  }
++}
++
++/** Mensaje en español según el código HTTP, cuando la API no trae uno propio útil. */
++function fallbackMessage(status: number): string {
++  if (status === 401) return "Tu sesión expiró. Inicia sesión de nuevo.";
++  if (status === 403) return "No tienes permiso para hacer esto.";
++  if (status === 404) return "Este elemento ya no existe. Recarga la página.";
++  if (status === 413) return "Los datos enviados son demasiado grandes.";
++  if (status >= 500) return "Ocurrió un error en el servidor. Inténtalo de nuevo en unos segundos.";
++  return "No se pudo completar la acción.";
++}
++
++/** Convierte el cuerpo de error de la API en un AdminApiError. */
++export function toAdminApiError(status: number, body: unknown): AdminApiError {
++  const error = (body as ApiErrorBody | null)?.error;
++  const fieldErrors: FieldErrors = {};
++
++  for (const detail of error?.details ?? []) {
++    // El detalle "body" no es de un campo concreto: se muestra como mensaje general.
++    if (detail.field && detail.field !== "body" && detail.message && !fieldErrors[detail.field]) {
++      fieldErrors[detail.field] = detail.message;
++    }
++  }
++
++  const hasFieldErrors = Object.keys(fieldErrors).length > 0;
++  // Errores de validación: la API envía un texto genérico; lo importante está en cada campo.
++  // Errores 5xx: nunca mostramos el texto del servidor tal cual.
++  const message =
++    status === 400 && hasFieldErrors
++      ? "Revisa los campos marcados."
++      : status >= 500 || status === 401
++        ? fallbackMessage(status)
++        : (error?.message ?? fallbackMessage(status));
++
++  return new AdminApiError(status, error?.code, message, fieldErrors);
++}
++
++type Method = "POST" | "PATCH" | "DELETE";
++
++/**
++ * Hace una petición con cuerpo JSON opcional y devuelve el JSON de la respuesta
++ * (o `undefined` si la API respondió 204 sin cuerpo).
++ *
++ * @throws AdminApiError si la API responde con error o no se pudo conectar.
++ */
++export async function adminRequest<T = void>(method: Method, path: string, body?: unknown): Promise<T> {
++  let response: Response;
++
++  try {
++    response = await fetch(path, {
++      method,
++      credentials: "same-origin",
++      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
++      body: body !== undefined ? JSON.stringify(body) : undefined,
++    });
++  } catch {
++    throw new AdminApiError(0, "NETWORK_ERROR", "No se pudo conectar con el servidor. Revisa tu conexión.");
++  }
++
++  if (response.status === 204) return undefined as T;
++
++  const data: unknown = await response.json().catch(() => null);
++  if (!response.ok) throw toAdminApiError(response.status, data);
++  return data as T;
++}
+diff --git a/src/lib/admin-category-form.ts b/src/lib/admin-category-form.ts
+new file mode 100644
+index 0000000..a8d4a5f
+--- /dev/null
++++ b/src/lib/admin-category-form.ts
+@@ -0,0 +1,63 @@
++/**
++ * ============================================================================
++ * LÓGICA PURA DEL FORMULARIO DE CATEGORÍAS
++ * ============================================================================
++ * Igual que `admin-product-form`, pero para categorías. Sin React: se prueba sola.
++ * El estado (activa / desactivada) NO es parte del formulario: se cambia con los botones
++ * "Desactivar" y "Reactivar" de la lista.
++ */
++import type { FieldErrors } from "./admin-api-client";
++import type { Category } from "@/types/catalog";
++
++export interface CategoryFormValues {
++  name: string;
++  slug: string;
++  description: string;
++}
++
++export const emptyCategoryForm: CategoryFormValues = { name: "", slug: "", description: "" };
++
++export function categoryToFormValues(category: Category): CategoryFormValues {
++  return {
++    name: category.name,
++    slug: category.slug,
++    description: category.description ?? "",
++  };
++}
++
++export function validateCategoryForm(values: CategoryFormValues): FieldErrors {
++  const errors: FieldErrors = {};
++  if (!values.name.trim()) errors.name = "El nombre es obligatorio.";
++  return errors;
++}
++
++/** Cuerpo de POST /api/categorias. */
++export function buildCreateCategoryPayload(values: CategoryFormValues): Record<string, unknown> {
++  const slug = values.slug.trim();
++  const description = values.description.trim();
++
++  return {
++    name: values.name.trim(),
++    description: description || null,
++    ...(slug ? { slug } : {}),
++  };
++}
++
++/** Cuerpo de PATCH /api/categorias/:id: solo lo que cambió (vacío si no cambió nada). */
++export function buildUpdateCategoryPayload(
++  values: CategoryFormValues,
++  original: Category,
++): Record<string, unknown> {
++  const changes: Record<string, unknown> = {};
++
++  const name = values.name.trim();
++  if (name !== original.name) changes.name = name;
++
++  const slug = values.slug.trim();
++  if (slug !== original.slug) changes.slug = slug;
++
++  const description = values.description.trim();
++  if (description !== (original.description ?? "")) changes.description = description || null;
++
++  return changes;
++}
+diff --git a/src/lib/admin-product-form.ts b/src/lib/admin-product-form.ts
+new file mode 100644
+index 0000000..f569ba6
+--- /dev/null
++++ b/src/lib/admin-product-form.ts
+@@ -0,0 +1,138 @@
++/**
++ * ============================================================================
++ * LÓGICA PURA DEL FORMULARIO DE PRODUCTOS
++ * ============================================================================
++ * Sin React: convierte lo que escribe el administrador en lo que espera la API, y al revés.
++ * Se prueba sola (tests/unit/admin-forms.test.ts). El componente solo la llama.
++ *
++ * PRECIO: se escribe SOLO con dígitos, en pesos enteros ("89900"). A propósito no se admiten
++ * puntos ni comas: en Colombia "89.900" significa ochenta y nueve mil novecientos, pero la API
++ * lo leería como 89,9 pesos. Quitar los símbolos al escribir elimina ese error de raíz.
++ */
++import type { FieldErrors } from "./admin-api-client";
++import type { Product } from "@/types/catalog";
++
++/** Lo que el formulario guarda de cada campo (todo texto, como un <input>). */
++export interface ProductFormValues {
++  name: string;
++  slug: string;
++  description: string;
++  /** Solo dígitos. */
++  price: string;
++  categoryId: string;
++  imageUrl: string;
++  isAvailable: boolean;
++}
++
++export const emptyProductForm: ProductFormValues = {
++  name: "",
++  slug: "",
++  description: "",
++  price: "",
++  categoryId: "",
++  imageUrl: "",
++  isAvailable: true,
++};
++
++/** Máximo de dígitos del precio (evita números absurdos; la API valida el tope real). */
++const PRICE_MAX_DIGITS = 10;
++
++/** Deja solo los dígitos, sin ceros a la izquierda: "89.900 $" → "89900", "007" → "7". */
++export function sanitizePriceInput(raw: string): string {
++  return raw.replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, PRICE_MAX_DIGITS);
++}
++
++/** Valores iniciales del formulario al EDITAR un producto existente. */
++export function productToFormValues(product: Product): ProductFormValues {
++  return {
++    name: product.name,
++    slug: product.slug,
++    description: product.description,
++    // Redondeado: en pesos colombianos no hay centavos. (Si el precio original tenía
++    // decimales y el usuario no lo toca, no se envía y se conserva tal cual: ver abajo.)
++    price: String(Math.round(product.price)),
++    categoryId: product.categoryId ?? "",
++    imageUrl: product.imageUrl ?? "",
++    isAvailable: product.isAvailable,
++  };
++}
++
++/**
++ * Comprobaciones rápidas ANTES de enviar, para avisar sin esperar al servidor.
++ * No sustituyen a la API (que valida todo de nuevo): solo mejoran la experiencia.
++ */
++export function validateProductForm(values: ProductFormValues): FieldErrors {
++  const errors: FieldErrors = {};
++  if (!values.name.trim()) errors.name = "El nombre es obligatorio.";
++  if (!values.price || Number(values.price) <= 0) errors.price = "Escribe un precio mayor que cero.";
++  if (!values.categoryId) errors.categoryId = "Elige una categoría.";
++  return errors;
++}
++
++/** Cuerpo de POST /api/productos. Los opcionales vacíos se omiten. */
++export function buildCreateProductPayload(values: ProductFormValues): Record<string, unknown> {
++  const slug = values.slug.trim();
++  const imageUrl = values.imageUrl.trim();
++
++  return {
++    name: values.name.trim(),
++    description: values.description.trim(),
++    price: Number(values.price),
++    categoryId: values.categoryId,
++    isAvailable: values.isAvailable,
++    ...(slug ? { slug } : {}),
++    ...(imageUrl ? { imageUrl } : {}),
++  };
++}
++
++/**
++ * Cuerpo de PATCH /api/productos/:id: SOLO los campos que el administrador cambió.
++ * Enviar únicamente lo modificado evita pisar datos (por ejemplo, un precio con decimales que
++ * el formulario muestra redondeado) y hace innecesaria la escritura si no hay cambios.
++ * Devuelve un objeto vacío si no cambió nada.
++ */
++export function buildUpdateProductPayload(
++  values: ProductFormValues,
++  original: Product,
++): Record<string, unknown> {
++  const changes: Record<string, unknown> = {};
++
++  const name = values.name.trim();
++  if (name !== original.name) changes.name = name;
++
++  const slug = values.slug.trim();
++  // Slug vacío = "genéralo de nuevo a partir del nombre" (lo entiende la API).
++  if (slug !== original.slug) changes.slug = slug;
++
++  const description = values.description.trim();
++  if (description !== original.description) changes.description = description;
++
++  if (Number(values.price) !== Math.round(original.price)) changes.price = Number(values.price);
++
++  if (values.categoryId !== (original.categoryId ?? "")) changes.categoryId = values.categoryId;
++
++  const imageUrl = values.imageUrl.trim();
++  // `null` = quitar la imagen.
++  if (imageUrl !== (original.imageUrl ?? "")) changes.imageUrl = imageUrl || null;
++
++  if (values.isAvailable !== original.isAvailable) changes.isAvailable = values.isAvailable;
++
++  return changes;
++}
++
++/**
++ * ¿Se puede mostrar esta URL como vista previa de imagen?
++ *
++ * Se usa mientras el administrador ESCRIBE la URL, así que pasa por estados incompletos
++ * ("h", "https:", "https://"...). Solo se acepta una URL completa y bien formada con http(s)
++ * y un dominio: pasarle a <Image> una URL a medias lanza una excepción y rompe el formulario.
++ * También descarta esquemas peligrosos (javascript:, data:, ftp:...).
++ */
++export function isPreviewableImageUrl(value: string): boolean {
++  try {
++    const url = new URL(value.trim());
++    return (url.protocol === "http:" || url.protocol === "https:") && url.hostname.length > 0;
++  } catch {
++    return false;
++  }
++}
+diff --git a/src/lib/api-client.ts b/src/lib/api-client.ts
+index ef73a39..5dd67a7 100644
+--- a/src/lib/api-client.ts
++++ b/src/lib/api-client.ts
+@@ -43,17 +43,26 @@ interface ApiErrorBody {
+   error?: { code?: string; message?: string };
+ }
+ 
++/** Opciones de una petición GET. */
++export interface ApiGetOptions {
++  /**
++   * Cabeceras extra. Se usan para reenviar la cookie de sesión del administrador cuando una
++   * página del PANEL pide datos protegidos (ver `services/admin-service.ts`).
++   */
++  headers?: Record<string, string>;
++}
++
+ /**
+  * GET a la API que devuelve el JSON tipado.
+  *
+  * @throws ApiError si la respuesta no es 2xx o si no se pudo contactar la API.
+  */
+-export async function apiGet<T>(path: string): Promise<T> {
++export async function apiGet<T>(path: string, options: ApiGetOptions = {}): Promise<T> {
+   let response: Response;
+ 
+   try {
+     response = await fetch(`${getApiBaseUrl()}${path}`, {
+-      headers: { Accept: "application/json" },
++      headers: { Accept: "application/json", ...options.headers },
+       // La tienda debe mostrar siempre lo último que se guardó en el panel de administración,
+       // por eso no se guarda copia de las respuestas.
+       cache: "no-store",
+@@ -81,9 +90,9 @@ export async function apiGet<T>(path: string): Promise<T> {
+  * Es lo que queremos cuando el recurso "puede no existir" (por ejemplo, un producto
+  * cuyo enlace se escribió mal): la página decide mostrar su pantalla de "no encontrado".
+  */
+-export async function apiGetOrNull<T>(path: string): Promise<T | null> {
++export async function apiGetOrNull<T>(path: string, options: ApiGetOptions = {}): Promise<T | null> {
+   try {
+-    return await apiGet<T>(path);
++    return await apiGet<T>(path, options);
+   } catch (error) {
+     if (error instanceof ApiError && error.status === 404) return null;
+     throw error;
+diff --git a/src/lib/search-params.ts b/src/lib/search-params.ts
+new file mode 100644
+index 0000000..2c86aef
+--- /dev/null
++++ b/src/lib/search-params.ts
+@@ -0,0 +1,7 @@
++/**
++ * Next.js entrega cada parámetro de la URL como texto, o como lista si se repite
++ * (?aviso=a&aviso=b). Nos quedamos con el primero.
++ */
++export function firstParam(value: string | string[] | undefined): string | undefined {
++  return Array.isArray(value) ? value[0] : value;
++}
+diff --git a/src/services/admin-service.ts b/src/services/admin-service.ts
+new file mode 100644
+index 0000000..c512793
+--- /dev/null
++++ b/src/services/admin-service.ts
+@@ -0,0 +1,80 @@
++/**
++ * ============================================================================
++ * SERVICIO DE DATOS DEL PANEL (lectura, en el servidor)
++ * ============================================================================
++ * Igual que `catalog-service`, pero para datos PROTEGIDOS: los endpoints del administrador
++ * exigen la cookie de sesión. Como estas funciones corren en el servidor (Server Components),
++ * hay que tomar la cookie de la petición del navegador y REENVIARLA a la API.
++ *
++ *   navegador ──cookie──▶ página (servidor) ──cookie──▶ /api/...
++ *
++ * Si la API responde 401 (sin sesión o sesión vencida) se redirige a /admin/login.
++ * (La API vuelve a comprobar la sesión en cada petición: esto es solo comodidad de navegación,
++ * la seguridad real está en los endpoints.)
++ *
++ * `cookies()` es un dato "de petición": con Cache Components, quien llame estas funciones debe
++ * estar dentro de un <Suspense>.
++ */
++import { cookies } from "next/headers";
++import { redirect } from "next/navigation";
++import { cache } from "react";
++
++import { ApiError, apiGet, apiGetOrNull } from "@/lib/api-client";
++import type { AdminSession } from "@/types/admin";
++import type { Category, Product } from "@/types/catalog";
++
++interface ListResponse<T> {
++  data: T[];
++}
++
++/** Cabecera con la cookie de la petición actual, lista para reenviar a la API. */
++async function authHeaders(): Promise<Record<string, string>> {
++  return { cookie: (await cookies()).toString() };
++}
++
++/** Ejecuta una lectura protegida y, si la API dice "no autenticado", manda al login. */
++async function withAdminAuth<T>(load: () => Promise<T>): Promise<T> {
++  try {
++    return await load();
++  } catch (error) {
++    if (error instanceof ApiError && error.status === 401) redirect("/admin/login");
++    throw error;
++  }
++}
++
++/** Administrador de la sesión actual, o `null` si no hay sesión válida. */
++export const getAdminSession = cache(async (): Promise<AdminSession | null> => {
++  try {
++    return await apiGet<AdminSession>("/api/auth/me", { headers: await authHeaders() });
++  } catch (error) {
++    if (error instanceof ApiError && error.status === 401) return null;
++    throw error;
++  }
++});
++
++/** TODAS las categorías, también las desactivadas. */
++export const getAdminCategories = cache(async (): Promise<Category[]> =>
++  withAdminAuth(async () => {
++    const { data } = await apiGet<ListResponse<Category>>("/api/categorias?includeInactive=true", {
++      headers: await authHeaders(),
++    });
++    return data;
++  }),
++);
++
++/** TODOS los productos, también los ocultos. */
++export const getAdminProducts = cache(async (): Promise<Product[]> =>
++  withAdminAuth(async () => {
++    const { data } = await apiGet<ListResponse<Product>>("/api/productos?includeInactive=true", {
++      headers: await authHeaders(),
++    });
++    return data;
++  }),
++);
++
++/** Un producto por id (también si está oculto), o `null` si no existe. */
++export const getAdminProduct = cache(async (id: string): Promise<Product | null> =>
++  withAdminAuth(async () =>
++    apiGetOrNull<Product>(`/api/productos/${encodeURIComponent(id)}`, { headers: await authHeaders() }),
++  ),
++);
+diff --git a/src/types/admin.ts b/src/types/admin.ts
+new file mode 100644
+index 0000000..4f8ec77
+--- /dev/null
++++ b/src/types/admin.ts
+@@ -0,0 +1,6 @@
++/** Quién es el administrador con sesión iniciada (respuesta de GET /api/auth/me). */
++export interface AdminSession {
++  id: string;
++  email: string | null;
++  role: "ADMIN";
++}
+diff --git a/tests/unit/admin-forms.test.ts b/tests/unit/admin-forms.test.ts
+new file mode 100644
+index 0000000..ddca2ed
+--- /dev/null
++++ b/tests/unit/admin-forms.test.ts
+@@ -0,0 +1,200 @@
++/**
++ * Pruebas de la lógica pura de los formularios del panel (precio, payloads, cambios) y del
++ * cliente HTTP del navegador (traducción de errores). Sin servidor: fetch se simula.
++ */
++
++import assert from "node:assert/strict";
++import { afterEach, describe, it } from "node:test";
++
++import { AdminApiError, adminRequest, toAdminApiError } from "../../src/lib/admin-api-client.ts";
++import {
++  buildCreateCategoryPayload,
++  buildUpdateCategoryPayload,
++  categoryToFormValues,
++  validateCategoryForm,
++} from "../../src/lib/admin-category-form.ts";
++import {
++  buildCreateProductPayload,
++  buildUpdateProductPayload,
++  emptyProductForm,
++  isPreviewableImageUrl,
++  productToFormValues,
++  sanitizePriceInput,
++  validateProductForm,
++} from "../../src/lib/admin-product-form.ts";
++import type { Category, Product } from "../../src/types/catalog.ts";
++
++const product: Product = {
++  id: "10000000-0000-4000-8000-000000000001",
++  name: "Oso grande",
++  slug: "oso-grande",
++  description: "Oso de 80 cm",
++  price: 89900,
++  priceInCents: 8_990_000,
++  categoryId: "00000000-0000-4000-8000-000000000001",
++  imageUrl: "https://ejemplo.com/oso.jpg",
++  isAvailable: true,
++  createdAt: "2026-10-18T00:00:00.000Z",
++  updatedAt: "2026-10-18T00:00:00.000Z",
++};
++
++const category: Category = {
++  id: "00000000-0000-4000-8000-000000000001",
++  name: "Peluches",
++  slug: "peluches",
++  description: "Peluches suaves",
++  isActive: true,
++  createdAt: "2026-10-18T00:00:00.000Z",
++  updatedAt: "2026-10-18T00:00:00.000Z",
++};
++
++describe("sanitizePriceInput", () => {
++  it("deja solo dígitos: el punto de miles NUNCA se interpreta como decimal", () => {
++    assert.equal(sanitizePriceInput("89.900"), "89900");
++    assert.equal(sanitizePriceInput("$ 89,900"), "89900");
++    assert.equal(sanitizePriceInput("abc"), "");
++    assert.equal(sanitizePriceInput("1e5"), "15");
++  });
++
++  it("quita ceros a la izquierda pero conserva un 0 solo y limita la longitud", () => {
++    assert.equal(sanitizePriceInput("007"), "7");
++    assert.equal(sanitizePriceInput("0"), "0");
++    assert.equal(sanitizePriceInput("1".repeat(30)).length, 10);
++  });
++});
++
++describe("isPreviewableImageUrl", () => {
++  it("acepta solo URLs completas http(s) y rechaza los estados a medias al escribir", () => {
++    for (const ok of ["https://example.com/a.jpg", "http://x.co/img.png", " https://e "]) assert.equal(isPreviewableImageUrl(ok), true, ok);
++    for (const bad of ["", "h", "https:", "https:/", "https://", "no es una url", "javascript:alert(1)", "data:image/png;base64,AAAA", "ftp://x.com/a.png"]) {
++      assert.equal(isPreviewableImageUrl(bad), false, bad);
++    }
++  });
++});
++
++describe("formulario de productos", () => {
++  it("al crear: valida los obligatorios", () => {
++    assert.deepEqual(Object.keys(validateProductForm(emptyProductForm)).sort(), ["categoryId", "name", "price"]);
++    assert.deepEqual(validateProductForm({ ...emptyProductForm, name: "A", price: "100", categoryId: "x" }), {});
++    assert.ok(validateProductForm({ ...emptyProductForm, name: "A", price: "0", categoryId: "x" }).price);
++    assert.ok(validateProductForm({ ...emptyProductForm, name: "   ", price: "1", categoryId: "x" }).name);
++  });
++
++  it("al crear: arma el cuerpo con el precio como NÚMERO y omite los opcionales vacíos", () => {
++    const payload = buildCreateProductPayload({ ...emptyProductForm, name: "  Rosas  ", price: "45000", categoryId: "c1" });
++    assert.deepEqual(payload, { name: "Rosas", description: "", price: 45000, categoryId: "c1", isAvailable: true });
++    assert.equal(typeof payload.price, "number");
++
++    const full = buildCreateProductPayload({
++      ...emptyProductForm, name: "Rosas", price: "1", categoryId: "c1", slug: " rosas-rojas ", imageUrl: " https://x.co/a.jpg ", isAvailable: false,
++    });
++    assert.equal(full.slug, "rosas-rojas");
++    assert.equal(full.imageUrl, "https://x.co/a.jpg");
++    assert.equal(full.isAvailable, false);
++  });
++
++  it("al editar: si no se toca nada, el cuerpo queda vacío", () => {
++    assert.deepEqual(buildUpdateProductPayload(productToFormValues(product), product), {});
++  });
++
++  it("al editar: envía SOLO lo que cambió", () => {
++    const values = { ...productToFormValues(product), price: "99900", isAvailable: false };
++    assert.deepEqual(buildUpdateProductPayload(values, product), { price: 99900, isAvailable: false });
++  });
++
++  it("al editar: un precio con decimales que no se toca NO se envía (no se pisa con el redondeo)", () => {
++    const withCents = { ...product, price: 99900.5, priceInCents: 9_990_050 };
++    const values = productToFormValues(withCents);
++    assert.equal(values.price, "99901");
++    assert.deepEqual(buildUpdateProductPayload(values, withCents), {});
++    assert.deepEqual(buildUpdateProductPayload({ ...values, price: "120000" }, withCents), { price: 120000 });
++  });
++
++  it("al editar: vaciar la imagen envía null; vaciar el slug pide regenerarlo", () => {
++    const values = { ...productToFormValues(product), imageUrl: "", slug: "" };
++    assert.deepEqual(buildUpdateProductPayload(values, product), { imageUrl: null, slug: "" });
++  });
++
++  it("al editar un producto sin categoría o sin imagen no inventa cambios", () => {
++    const bare = { ...product, categoryId: null, imageUrl: null };
++    assert.deepEqual(buildUpdateProductPayload(productToFormValues(bare), bare), {});
++  });
++});
++
++describe("formulario de categorías", () => {
++  it("valida el nombre y arma el cuerpo (descripción vacía → null)", () => {
++    assert.ok(validateCategoryForm({ name: " ", slug: "", description: "" }).name);
++    assert.deepEqual(validateCategoryForm({ name: "A", slug: "", description: "" }), {});
++    assert.deepEqual(buildCreateCategoryPayload({ name: " Flores ", slug: "", description: "" }), { name: "Flores", description: null });
++    assert.deepEqual(buildCreateCategoryPayload({ name: "Flores", slug: "f", description: "Ramos" }), { name: "Flores", description: "Ramos", slug: "f" });
++  });
++
++  it("al editar envía solo los cambios", () => {
++    const values = categoryToFormValues(category);
++    assert.deepEqual(buildUpdateCategoryPayload(values, category), {});
++    assert.deepEqual(buildUpdateCategoryPayload({ ...values, description: "" }, category), { description: null });
++    assert.deepEqual(buildUpdateCategoryPayload({ ...values, name: "Muñecos" }, category), { name: "Muñecos" });
++  });
++});
++
++describe("traducción de errores de la API", () => {
++  it("validación: mensaje general + error por campo", () => {
++    const error = toAdminApiError(400, {
++      error: { code: "VALIDATION_ERROR", message: "Los datos enviados no son válidos", details: [
++        { field: "price", message: "El precio debe ser mayor que cero" },
++        { field: "price", message: "otro" },
++        { field: "body", message: "ignorado" },
++      ] },
++    });
++    assert.equal(error.message, "Revisa los campos marcados.");
++    assert.deepEqual(error.fieldErrors, { price: "El precio debe ser mayor que cero" });
++  });
++
++  it("conflicto 409: usa el mensaje de la API; 5xx y 401: textos propios, sin filtrar el servidor", () => {
++    assert.equal(toAdminApiError(409, { error: { message: "Ya existe ese slug" } }).message, "Ya existe ese slug");
++    assert.equal(toAdminApiError(500, { error: { message: "password=secreto" } }).message.includes("secreto"), false);
++    const expired = toAdminApiError(401, { error: { message: "x" } });
++    assert.equal(expired.isSessionExpired, true);
++    assert.match(expired.message, /sesión expiró/);
++  });
++
++  it("slug repetido: el error queda en el campo slug", () => {
++    const error = toAdminApiError(409, { error: { code: "DUPLICATE_SLUG", message: "Ya existe", details: [{ field: "slug", message: "Ya existe" }] } });
++    assert.equal(error.fieldErrors.slug, "Ya existe");
++  });
++});
++
++describe("adminRequest", () => {
++  const original = globalThis.fetch;
++  afterEach(() => { globalThis.fetch = original; });
++  const mock = (status: number, body?: unknown) => {
++    const calls: Array<{ url: string; init: RequestInit }> = [];
++    globalThis.fetch = (async (url: string, init: RequestInit) => {
++      calls.push({ url, init });
++      return new Response(body === undefined ? null : JSON.stringify(body), { status });
++    }) as typeof fetch;
++    return calls;
++  };
++
++  it("envía JSON con la cookie del mismo origen y devuelve la respuesta", async () => {
++    const calls = mock(201, { id: "1" });
++    const result = await adminRequest<{ id: string }>("POST", "/api/productos", { name: "x" });
++    assert.deepEqual(result, { id: "1" });
++    assert.equal(calls[0]?.init.credentials, "same-origin");
++    assert.equal(calls[0]?.init.body, JSON.stringify({ name: "x" }));
++    assert.deepEqual(calls[0]?.init.headers, { "Content-Type": "application/json" });
++  });
++
++  it("204 devuelve undefined (DELETE) y no manda cuerpo", async () => {
++    const calls = mock(204);
++    assert.equal(await adminRequest("DELETE", "/api/productos/1"), undefined);
++    assert.equal(calls[0]?.init.body, undefined);
++  });
++
++  it("errores HTTP y de red lanzan AdminApiError", async () => {
++    mock(409, { error: { message: "Choque" } });
++    await assert.rejects(adminRequest("PATCH", "/api/x", {}), (e: unknown) => e instanceof AdminApiError && e.status === 409 && e.message === "Choque");
++    globalThis.fetch = (async () => { throw new TypeError("fetch failed"); }) as typeof fetch;
++    await assert.rejects(adminRequest("POST", "/api/x", {}), (e: unknown) => e instanceof AdminApiError && e.status === 0);
++  });
++});
+diff --git a/tests/unit/storefront.test.ts b/tests/unit/storefront.test.ts
+index 634e7ec..de5c75b 100644
+--- a/tests/unit/storefront.test.ts
++++ b/tests/unit/storefront.test.ts
+@@ -127,6 +127,16 @@ describe("cliente HTTP y servicio del catálogo", () => {
+     await assert.rejects(apiGetOrNull("/api/productos/x"), ApiError);
+   });
+ 
++  it("reenvía las cabeceras extra (la cookie de sesión del panel) a la API", async () => {
++    let received: HeadersInit | undefined;
++    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
++      received = init?.headers;
++      return new Response("{}", { status: 200 });
++    }) as typeof fetch;
++    await apiGet("/api/auth/me", { headers: { cookie: "vikos_session=abc" } });
++    assert.deepEqual(received, { Accept: "application/json", cookie: "vikos_session=abc" });
++  });
++
+   it("si la API no responde, lanza ApiError con estado 0", async () => {
+     globalThis.fetch = (async () => {
+       throw new TypeError("fetch failed");

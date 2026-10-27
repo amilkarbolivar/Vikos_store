@@ -1,19 +1,15 @@
-import { Container } from "@/components/ui/container";
-import { ButtonLink } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
+import { NotFoundView } from "@/components/layout/not-found-view";
+import { StoreShell } from "@/components/layout/store-shell";
 
 /**
- * Pantalla 404. Next.js la muestra cuando una ruta no existe o cuando una página llama a
- * `notFound()` (por ejemplo, un producto que no existe o está oculto).
+ * 404 GLOBAL: se usa cuando la URL no coincide con ninguna ruta. Como no pertenece a ningún
+ * grupo, no recibe ningún marco automáticamente: se lo ponemos aquí para que se vea igual que
+ * el 404 de la tienda.
  */
-export default function NotFound() {
+export default function GlobalNotFound() {
   return (
-    <Container className="py-16 sm:py-24">
-      <EmptyState
-        title="No encontramos lo que buscas"
-        description="Puede que el enlace esté mal escrito o que este regalo ya no esté disponible."
-        action={<ButtonLink href="/productos">Ver la tienda</ButtonLink>}
-      />
-    </Container>
+    <StoreShell>
+      <NotFoundView />
+    </StoreShell>
   );
 }

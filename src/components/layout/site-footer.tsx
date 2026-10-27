@@ -3,6 +3,7 @@ import Link from "next/link";
 import { siteConfig } from "@/config/site";
 
 import { Container } from "../ui/container";
+import { InstagramIcon } from "../ui/icons";
 import { ContactWhatsAppButton } from "../whatsapp/contact-whatsapp-button";
 import { BrandLogo } from "./brand-logo";
 
@@ -39,8 +40,18 @@ export function SiteFooter() {
           <p className="mt-3 text-sm text-muted">
             Cuéntanos qué quieres regalar y te ayudamos a elegir.
           </p>
-          <div className="mt-4">
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
             <ContactWhatsAppButton />
+            {/* Instagram: se edita en siteConfig.social. */}
+            <a
+              href={siteConfig.social.instagram.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-ink hover:text-brand-700"
+            >
+              <InstagramIcon />
+              {siteConfig.social.instagram.handle}
+            </a>
           </div>
         </div>
       </Container>

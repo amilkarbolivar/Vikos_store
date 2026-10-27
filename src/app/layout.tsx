@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
-import { AnnouncementBar } from "@/components/layout/announcement-bar";
-import { SiteFooter } from "@/components/layout/site-footer";
-import { SiteHeader } from "@/components/layout/site-header";
-import { WhatsAppFloat } from "@/components/whatsapp/whatsapp-float";
 import { siteConfig } from "@/config/site";
 
 import "./globals.css";
@@ -39,34 +35,17 @@ export const metadata: Metadata = {
 };
 
 /**
- * LAYOUT RAÍZ: el marco común de todas las páginas.
+ * LAYOUT RAÍZ: lo mínimo común a TODO el sitio (tienda y panel de administración): el documento
+ * HTML, las fuentes y los metadatos por defecto.
  *
- *   franja de aviso → encabezado → [contenido de la página] → pie → botón flotante de WhatsApp
- *
- * Nada de aquí depende de la API, así que todo el marco es estático y carga al instante.
+ * El marco visible (encabezado, pie...) NO está aquí, porque la tienda y el panel son distintos:
+ *   - tienda → `app/(store)/layout.tsx`  (usa `StoreShell`)
+ *   - panel  → `app/admin/(panel)/layout.tsx`  (usa `AdminShell`)
  */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">
-        {/* Enlace invisible que aparece al navegar con Tab: salta directo al contenido. */}
-        <a
-          href="#contenido"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:font-semibold focus:shadow-card-hover"
-        >
-          Saltar al contenido
-        </a>
-
-        <AnnouncementBar />
-        <SiteHeader />
-
-        <main id="contenido" className="flex-1">
-          {children}
-        </main>
-
-        <SiteFooter />
-        <WhatsAppFloat />
-      </body>
+      <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );
 }

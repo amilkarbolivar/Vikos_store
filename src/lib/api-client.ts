@@ -43,17 +43,26 @@ interface ApiErrorBody {
   error?: { code?: string; message?: string };
 }
 
+/** Opciones de una petición GET. */
+export interface ApiGetOptions {
+  /**
+   * Cabeceras extra. Se usan para reenviar la cookie de sesión del administrador cuando una
+   * página del PANEL pide datos protegidos (ver `services/admin-service.ts`).
+   */
+  headers?: Record<string, string>;
+}
+
 /**
  * GET a la API que devuelve el JSON tipado.
  *
  * @throws ApiError si la respuesta no es 2xx o si no se pudo contactar la API.
  */
-export async function apiGet<T>(path: string): Promise<T> {
+export async function apiGet<T>(path: string, options: ApiGetOptions = {}): Promise<T> {
   let response: Response;
 
   try {
     response = await fetch(`${getApiBaseUrl()}${path}`, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...options.headers },
       // La tienda debe mostrar siempre lo último que se guardó en el panel de administración,
       // por eso no se guarda copia de las respuestas.
       cache: "no-store",
@@ -81,9 +90,9 @@ export async function apiGet<T>(path: string): Promise<T> {
  * Es lo que queremos cuando el recurso "puede no existir" (por ejemplo, un producto
  * cuyo enlace se escribió mal): la página decide mostrar su pantalla de "no encontrado".
  */
-export async function apiGetOrNull<T>(path: string): Promise<T | null> {
+export async function apiGetOrNull<T>(path: string, options: ApiGetOptions = {}): Promise<T | null> {
   try {
-    return await apiGet<T>(path);
+    return await apiGet<T>(path, options);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;

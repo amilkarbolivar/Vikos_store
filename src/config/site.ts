@@ -53,9 +53,36 @@ export const siteConfig = {
     generalMessage: "Hola 👋, quiero información sobre sus regalos.",
   },
 
-  /** Enlaces del menú principal (encabezado y pie). */
+  /**
+   * Enlaces fijos del menú principal (encabezado y pie).
+   * Después de estos, el encabezado agrega automáticamente las primeras categorías de la API.
+   */
   nav: [
     { label: "Inicio", href: "/" },
+    { label: "Sobre nosotros", href: "/sobre-nosotros" },
     { label: "Tienda", href: "/productos" },
   ],
+
+  /** Cuántas categorías se muestran como enlaces directos en el encabezado (el resto, en el filtro de la tienda). */
+  headerCategoryLimit: 3,
+
+  /**
+   * Rangos del selector de precios de la tienda, en pesos.
+   * `max` = "hasta" (incluido) · `min` = "más de" (no incluido). Para cambiar los rangos,
+   * edita esta lista: las etiquetas ("Hasta $50.000", "$50.000 – $100.000"...) se generan solas.
+   */
+  priceRanges: [
+    { max: 50_000 },
+    { min: 50_000, max: 100_000 },
+    { min: 100_000, max: 200_000 },
+    { min: 200_000 },
+  ],
+
+  /** Redes sociales. El perfil de Instagram es el que indicó la tienda. */
+  social: {
+    instagram: {
+      handle: "@vikos_detalles",
+      url: "https://www.instagram.com/vikos_detalles",
+    },
+  },
 } as const;

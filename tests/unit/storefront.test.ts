@@ -127,6 +127,16 @@ describe("cliente HTTP y servicio del catálogo", () => {
     await assert.rejects(apiGetOrNull("/api/productos/x"), ApiError);
   });
 
+  it("reenvía las cabeceras extra (la cookie de sesión del panel) a la API", async () => {
+    let received: HeadersInit | undefined;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      received = init?.headers;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    await apiGet("/api/auth/me", { headers: { cookie: "vikos_session=abc" } });
+    assert.deepEqual(received, { Accept: "application/json", cookie: "vikos_session=abc" });
+  });
+
   it("si la API no responde, lanza ApiError con estado 0", async () => {
     globalThis.fetch = (async () => {
       throw new TypeError("fetch failed");

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { Product } from "@/types/catalog";
 
 import { ButtonLink } from "../ui/button";
@@ -6,12 +8,18 @@ import { ProductCard } from "./product-card";
 
 interface ProductGridProps {
   products: Product[];
+  /**
+   * Qué mostrar cuando no hay productos. Si no se indica, se usa un mensaje genérico.
+   * (Por ejemplo, la tienda pasa uno distinto cuando el visitante filtró por un precio.)
+   */
+  emptyState?: ReactNode;
 }
 
 /** Cuadrícula responsive de productos: 2 columnas en celular, 3 en tablet y 4 en escritorio. */
-export function ProductGrid({ products }: ProductGridProps) {
+export function ProductGrid({ products, emptyState }: ProductGridProps) {
   if (products.length === 0) {
     return (
+      emptyState ?? (
       <EmptyState
         title="Aún no hay productos aquí"
         description="Estamos preparando nuevos regalos. Mientras tanto, explora las demás categorías."
@@ -21,6 +29,7 @@ export function ProductGrid({ products }: ProductGridProps) {
           </ButtonLink>
         }
       />
+      )
     );
   }
 

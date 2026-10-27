@@ -10,11 +10,19 @@ export const metadata: Metadata = {
   description: "Explora todos nuestros regalos y pídelos por WhatsApp.",
 };
 
-/** TIENDA ( /productos ): todos los productos visibles, con filtro por categoría. */
-export default function ProductsPage() {
+type Props = {
+  searchParams: Promise<{ categoria?: string | string[]; precio?: string | string[] }>;
+};
+
+/**
+ * TIENDA ( /productos ): todos los productos visibles, con selector de categoría y de precio.
+ * Los filtros viajan en la URL: /productos?categoria=peluches&precio=0-50000
+ */
+export default function ProductsPage({ searchParams }: Props) {
   return (
     <Suspense fallback={<CatalogBrowserSkeleton />}>
-      <AllProductsContent />
+      {/* Se pasa la PROMESA de `searchParams` (sin esperarla aquí): ver AllProductsContent. */}
+      <AllProductsContent searchParamsPromise={searchParams} />
     </Suspense>
   );
 }
