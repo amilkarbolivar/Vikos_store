@@ -46,3 +46,10 @@ next-env.d.ts
 /src/generated/prisma
 
 .yaml
+
+node_modules
+.next
+.git
+.env*
+cookies.txt
+*.pem
