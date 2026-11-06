@@ -1,12 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Input, NativeSelect, Textarea } from "@/components/ui/input";
-import { AdminApiError, adminRequest, type FieldErrors } from "@/lib/admin-api-client";
+import { AdminApiError, adminRequest, adminUpload, type FieldErrors } from "@/lib/admin-api-client";
 import {
   buildCreateProductPayload,
   buildUpdateProductPayload,
@@ -17,6 +17,7 @@ import {
   type ProductFormValues,
 } from "@/lib/admin-product-form";
 import { formatPrice } from "@/lib/format-price";
+import { checkImageFile } from "@/lib/image-upload";
 import type { Category, Product } from "@/types/catalog";
 
 import { FormField } from "./form-field";
@@ -44,6 +45,9 @@ export function ProductForm({ categories, product }: ProductFormProps) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const isEditing = Boolean(product);
 
@@ -102,6 +106,34 @@ export function ProductForm({ categories, product }: ProductFormProps) {
         setFormError("No se pudo guardar el producto.");
       }
       setPending(false);
+    }
+  }
+
+  /** Sube la imagen elegida a S3 y guarda en el formulario la URL que devuelve. */
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // permite volver a elegir el mismo archivo
+    if (!file) return;
+
+    setUploadError(null);
+    const problem = checkImageFile(file);
+    if (problem) {
+      setUploadError(problem);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const { url } = await adminUpload(file);
+      update("imageUrl", url);
+    } catch (caught) {
+      if (caught instanceof AdminApiError && caught.isSessionExpired) {
+        router.push("/admin/login");
+        return;
+      }
+      setUploadError(caught instanceof AdminApiError ? caught.message : "No se pudo subir la imagen.");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -198,7 +230,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
           <ButtonLink href="/admin/productos" variant="secondary">
             Cancelar
           </ButtonLink>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" disabled={pending || uploading}>
             {pending ? "Guardando…" : isEditing ? "Guardar cambios" : "Crear producto"}
           </Button>
         </div>
@@ -206,11 +238,31 @@ export function ProductForm({ categories, product }: ProductFormProps) {
 
       {/* Columna derecha: la imagen con su vista previa en vivo. */}
       <aside className="space-y-3">
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={handleFileChange}
+          className="sr-only"
+          tabIndex={-1}
+          aria-label="Elegir imagen del computador"
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" disabled={uploading || pending} onClick={() => fileInput.current?.click()}>
+            {uploading ? "Subiendo…" : values.imageUrl ? "Cambiar imagen" : "Subir imagen"}
+          </Button>
+          {values.imageUrl && !uploading && (
+            <Button variant="ghost" size="sm" onClick={() => update("imageUrl", "")}>
+              Quitar imagen
+            </Button>
+          )}
+        </div>
+        {uploadError && <Alert tone="error">{uploadError}</Alert>}
         <FormField
           name="imageUrl"
-          label="URL de la imagen"
+          label="URL de la imagen (se llena sola al subir)"
           error={fieldErrors.imageUrl}
-          hint="Opcional. Debe empezar por https://"
+          hint="Opcional. Sube un archivo o pega un enlace https://"
         >
           {(field) => (
             <Input {...field} type="url" inputMode="url" value={values.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="https://…" />

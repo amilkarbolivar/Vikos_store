@@ -105,3 +105,29 @@ export async function adminRequest<T = void>(method: Method, path: string, body?
   if (!response.ok) throw toAdminApiError(response.status, data);
   return data as T;
 }
+
+/**
+ * Sube una imagen a POST /api/uploads (multipart) y devuelve la URL pública que genera S3.
+ * No se fija Content-Type a mano: el navegador añade el "boundary" correcto.
+ *
+ * @throws AdminApiError si falla la subida o no hay conexión.
+ */
+export async function adminUpload(file: File): Promise<{ url: string }> {
+  const form = new FormData();
+  form.append("file", file);
+
+  let response: Response;
+  try {
+    response = await fetch("/api/uploads", { method: "POST", credentials: "same-origin", body: form });
+  } catch {
+    throw new AdminApiError(0, "NETWORK_ERROR", "No se pudo conectar con el servidor. Revisa tu conexión.");
+  }
+
+  const data: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = toAdminApiError(response.status, data);
+    // La validación del archivo viene como detalle del campo "file": mostrarlo como mensaje.
+    throw new AdminApiError(error.status, error.code, error.fieldErrors.file ?? error.message, error.fieldErrors);
+  }
+  return data as { url: string };
+}
