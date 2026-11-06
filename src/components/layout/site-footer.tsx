@@ -18,7 +18,7 @@ export function SiteFooter() {
     <footer className="mt-16 border-t border-line bg-white">
       <Container className="grid gap-10 py-12 md:grid-cols-3">
         <div className="space-y-3">
-          <BrandLogo />
+          <BrandLogo variant="full" />
           <p className="max-w-xs text-sm text-muted">{siteConfig.description}</p>
         </div>
 

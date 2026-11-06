@@ -1,0 +1,395 @@
+diff --git a/compose.prod.yaml b/compose.prod.yaml
+index 386957f..61297ac 100644
+--- a/compose.prod.yaml
++++ b/compose.prod.yaml
+@@ -31,6 +31,9 @@ services:
+       NODE_ENV: production
+       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/vikos_store?schema=public
+       SESSION_SECRET: ${SESSION_SECRET}
++      S3_BUCKET: ${S3_BUCKET:-}
++      AWS_REGION: ${AWS_REGION:-}
++      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+     logging:
+       driver: json-file
+       options: { max-size: "10m", max-file: "3" }
+diff --git a/src/app/api/uploads/route.ts b/src/app/api/uploads/route.ts
+new file mode 100644
+index 0000000..6e0630c
+--- /dev/null
++++ b/src/app/api/uploads/route.ts
+@@ -0,0 +1,7 @@
++import { requireAdmin } from '@/infrastructure/composition/require-admin-composition';
++import { getImageStorage } from '@/infrastructure/storage/storage-provider';
++import { uploadImageHandler } from '@/modules/products/presentation/upload-image-handler';
++
++export async function POST(request: Request): Promise<Response> {
++  return uploadImageHandler({ requireAdmin, getStorage: getImageStorage, logger: console })(request);
++}
+diff --git a/src/components/forms/product-form.tsx b/src/components/forms/product-form.tsx
+index b0e1914..d5555de 100644
+--- a/src/components/forms/product-form.tsx
++++ b/src/components/forms/product-form.tsx
+@@ -1,12 +1,12 @@
+ "use client";
+ 
+ import { useRouter } from "next/navigation";
+-import { useState, type FormEvent } from "react";
++import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+ 
+ import { Alert } from "@/components/ui/alert";
+ import { Button, ButtonLink } from "@/components/ui/button";
+ import { Input, NativeSelect, Textarea } from "@/components/ui/input";
+-import { AdminApiError, adminRequest, type FieldErrors } from "@/lib/admin-api-client";
++import { AdminApiError, adminRequest, adminUpload, type FieldErrors } from "@/lib/admin-api-client";
+ import {
+   buildCreateProductPayload,
+   buildUpdateProductPayload,
+@@ -17,6 +17,7 @@ import {
+   type ProductFormValues,
+ } from "@/lib/admin-product-form";
+ import { formatPrice } from "@/lib/format-price";
++import { checkImageFile } from "@/lib/image-upload";
+ import type { Category, Product } from "@/types/catalog";
+ 
+ import { FormField } from "./form-field";
+@@ -44,6 +45,9 @@ export function ProductForm({ categories, product }: ProductFormProps) {
+   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+   const [formError, setFormError] = useState<string | null>(null);
+   const [pending, setPending] = useState(false);
++  const [uploading, setUploading] = useState(false);
++  const [uploadError, setUploadError] = useState<string | null>(null);
++  const fileInput = useRef<HTMLInputElement>(null);
+ 
+   const isEditing = Boolean(product);
+ 
+@@ -105,6 +109,34 @@ export function ProductForm({ categories, product }: ProductFormProps) {
+     }
+   }
+ 
++  /** Sube la imagen elegida a S3 y guarda en el formulario la URL que devuelve. */
++  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
++    const file = event.target.files?.[0];
++    event.target.value = ""; // permite volver a elegir el mismo archivo
++    if (!file) return;
++
++    setUploadError(null);
++    const problem = checkImageFile(file);
++    if (problem) {
++      setUploadError(problem);
++      return;
++    }
++
++    setUploading(true);
++    try {
++      const { url } = await adminUpload(file);
++      update("imageUrl", url);
++    } catch (caught) {
++      if (caught instanceof AdminApiError && caught.isSessionExpired) {
++        router.push("/admin/login");
++        return;
++      }
++      setUploadError(caught instanceof AdminApiError ? caught.message : "No se pudo subir la imagen.");
++    } finally {
++      setUploading(false);
++    }
++  }
++
+   const priceNumber = Number(values.price);
+ 
+   return (
+@@ -198,7 +230,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
+           <ButtonLink href="/admin/productos" variant="secondary">
+             Cancelar
+           </ButtonLink>
+-          <Button type="submit" disabled={pending}>
++          <Button type="submit" disabled={pending || uploading}>
+             {pending ? "Guardando…" : isEditing ? "Guardar cambios" : "Crear producto"}
+           </Button>
+         </div>
+@@ -206,11 +238,31 @@ export function ProductForm({ categories, product }: ProductFormProps) {
+ 
+       {/* Columna derecha: la imagen con su vista previa en vivo. */}
+       <aside className="space-y-3">
++        <input
++          ref={fileInput}
++          type="file"
++          accept="image/jpeg,image/png,image/webp"
++          onChange={handleFileChange}
++          className="sr-only"
++          tabIndex={-1}
++          aria-label="Elegir imagen del computador"
++        />
++        <div className="flex flex-wrap gap-2">
++          <Button variant="secondary" size="sm" disabled={uploading || pending} onClick={() => fileInput.current?.click()}>
++            {uploading ? "Subiendo…" : values.imageUrl ? "Cambiar imagen" : "Subir imagen"}
++          </Button>
++          {values.imageUrl && !uploading && (
++            <Button variant="ghost" size="sm" onClick={() => update("imageUrl", "")}>
++              Quitar imagen
++            </Button>
++          )}
++        </div>
++        {uploadError && <Alert tone="error">{uploadError}</Alert>}
+         <FormField
+           name="imageUrl"
+-          label="URL de la imagen"
++          label="URL de la imagen (se llena sola al subir)"
+           error={fieldErrors.imageUrl}
+-          hint="Opcional. Debe empezar por https://"
++          hint="Opcional. Sube un archivo o pega un enlace https://"
+         >
+           {(field) => (
+             <Input {...field} type="url" inputMode="url" value={values.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="https://…" />
+diff --git a/src/infrastructure/storage/storage-provider.ts b/src/infrastructure/storage/storage-provider.ts
+index e69de29..141822c 100644
+--- a/src/infrastructure/storage/storage-provider.ts
++++ b/src/infrastructure/storage/storage-provider.ts
+@@ -0,0 +1,38 @@
++import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
++
++export interface ImageStorage {
++  /** Guarda el archivo y devuelve la URL pública que se guarda en la BD. */
++  put(key: string, body: Uint8Array, contentType: string): Promise<string>;
++}
++
++let cached: ImageStorage | null | undefined;
++
++/**
++ * Devuelve el almacenamiento S3, o null si no está configurado (S3_BUCKET / AWS_REGION vacíos).
++ * Las credenciales las toma solas del rol IAM de la instancia EC2 (no hay claves en el código).
++ */
++export function getImageStorage(): ImageStorage | null {
++  if (cached !== undefined) return cached;
++  const bucket = process.env.S3_BUCKET?.trim();
++  const region = process.env.AWS_REGION?.trim();
++  if (!bucket || !region) return (cached = null);
++
++  const base = (process.env.S3_PUBLIC_BASE_URL?.trim() || `https://${bucket}.s3.${region}.amazonaws.com`).replace(/\/+$/, '');
++  const client = new S3Client({ region });
++
++  cached = {
++    async put(key, body, contentType) {
++      await client.send(
++        new PutObjectCommand({
++          Bucket: bucket,
++          Key: key,
++          Body: body,
++          ContentType: contentType,
++          CacheControl: 'public, max-age=31536000, immutable',
++        }),
++      );
++      return `${base}/${key}`;
++    },
++  };
++  return cached;
++}
+diff --git a/src/lib/admin-api-client.ts b/src/lib/admin-api-client.ts
+index 4cd67cf..270d044 100644
+--- a/src/lib/admin-api-client.ts
++++ b/src/lib/admin-api-client.ts
+@@ -105,3 +105,29 @@ export async function adminRequest<T = void>(method: Method, path: string, body?
+   if (!response.ok) throw toAdminApiError(response.status, data);
+   return data as T;
+ }
++
++/**
++ * Sube una imagen a POST /api/uploads (multipart) y devuelve la URL pública que genera S3.
++ * No se fija Content-Type a mano: el navegador añade el "boundary" correcto.
++ *
++ * @throws AdminApiError si falla la subida o no hay conexión.
++ */
++export async function adminUpload(file: File): Promise<{ url: string }> {
++  const form = new FormData();
++  form.append("file", file);
++
++  let response: Response;
++  try {
++    response = await fetch("/api/uploads", { method: "POST", credentials: "same-origin", body: form });
++  } catch {
++    throw new AdminApiError(0, "NETWORK_ERROR", "No se pudo conectar con el servidor. Revisa tu conexión.");
++  }
++
++  const data: unknown = await response.json().catch(() => null);
++  if (!response.ok) {
++    const error = toAdminApiError(response.status, data);
++    // La validación del archivo viene como detalle del campo "file": mostrarlo como mensaje.
++    throw new AdminApiError(error.status, error.code, error.fieldErrors.file ?? error.message, error.fieldErrors);
++  }
++  return data as { url: string };
++}
+diff --git a/src/lib/image-upload.ts b/src/lib/image-upload.ts
+new file mode 100644
+index 0000000..467e375
+--- /dev/null
++++ b/src/lib/image-upload.ts
+@@ -0,0 +1,27 @@
++/**
++ * Reglas puras para subir imágenes de producto (sin React ni red).
++ * Las usan el navegador (aviso rápido) y el servidor (validación real).
++ */
++export const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
++
++export type ImageType = { mime: "image/jpeg" | "image/png" | "image/webp"; ext: "jpg" | "png" | "webp" };
++
++/** Detecta el tipo REAL por los primeros bytes (no confía en el nombre ni en el Content-Type). */
++export function detectImageType(bytes: Uint8Array): ImageType | null {
++  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
++    return { mime: "image/jpeg", ext: "jpg" };
++  }
++  const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
++  if (bytes.length >= 8 && png.every((b, i) => bytes[i] === b)) return { mime: "image/png", ext: "png" };
++  const ascii = (from: number, text: string) => [...text].every((c, i) => bytes[from + i] === c.charCodeAt(0));
++  if (bytes.length >= 12 && ascii(0, "RIFF") && ascii(8, "WEBP")) return { mime: "image/webp", ext: "webp" };
++  return null;
++}
++
++/** Comprobación rápida en el navegador. Devuelve un mensaje de error o null si está bien. */
++export function checkImageFile(file: { size: number; type: string }): string | null {
++  if (file.size === 0) return "El archivo está vacío.";
++  if (file.size > MAX_IMAGE_BYTES) return "La imagen supera los 5 MB.";
++  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return "Usa una imagen JPG, PNG o WEBP.";
++  return null;
++}
+diff --git a/src/modules/products/presentation/upload-image-handler.ts b/src/modules/products/presentation/upload-image-handler.ts
+new file mode 100644
+index 0000000..96059d2
+--- /dev/null
++++ b/src/modules/products/presentation/upload-image-handler.ts
+@@ -0,0 +1,57 @@
++import { randomUUID } from 'node:crypto';
++
++import { detectImageType, MAX_IMAGE_BYTES } from '@/lib/image-upload';
++import { InfrastructureError, PayloadTooLargeError, ValidationError } from '@/modules/shared/domain/errors';
++import { errorBody, toErrorResponse, type ErrorLogger } from '@/modules/shared/presentation/http-error-mapper';
++
++export interface UploadImageDeps {
++  requireAdmin: () => Promise<unknown>;
++  getStorage: () => { put(key: string, body: Uint8Array, contentType: string): Promise<string> } | null;
++  logger?: ErrorLogger;
++}
++
++/** POST /api/uploads (solo admin): recibe un archivo, lo sube a S3 y devuelve { url }. */
++export function uploadImageHandler(deps: UploadImageDeps) {
++  return async (request: Request): Promise<Response> => {
++    try {
++      await deps.requireAdmin();
++
++      const storage = deps.getStorage();
++      if (!storage) {
++        return Response.json(errorBody('STORAGE_NOT_CONFIGURED', 'La subida de imágenes no está configurada.'), { status: 503 });
++      }
++
++      const declared = Number(request.headers.get('content-length'));
++      if (Number.isFinite(declared) && declared > MAX_IMAGE_BYTES + 100_000) {
++        throw new PayloadTooLargeError('La imagen supera los 5 MB.');
++      }
++      if (!(request.headers.get('content-type') ?? '').toLowerCase().startsWith('multipart/form-data')) {
++        throw new ValidationError('Se esperaba un formulario con la imagen.', 'file');
++      }
++
++      let form: FormData;
++      try {
++        form = await request.formData();
++      } catch {
++        throw new ValidationError('No se pudo leer el archivo enviado.', 'file');
++      }
++      const file = form.get('file');
++      if (!(file instanceof File)) throw new ValidationError('Falta el archivo de la imagen.', 'file');
++      if (file.size > MAX_IMAGE_BYTES) throw new PayloadTooLargeError('La imagen supera los 5 MB.');
++
++      const bytes = new Uint8Array(await file.arrayBuffer());
++      const type = detectImageType(bytes);
++      if (!type) throw new ValidationError('Usa una imagen JPG, PNG o WEBP.', 'file');
++
++      let url: string;
++      try {
++        url = await storage.put(`productos/${randomUUID()}.${type.ext}`, bytes, type.mime);
++      } catch (cause) {
++        throw new InfrastructureError('No se pudo guardar la imagen.', { cause });
++      }
++      return Response.json({ url }, { status: 201 });
++    } catch (error) {
++      return toErrorResponse(error, deps.logger, { context: 'subida de imágenes' });
++    }
++  };
++}
+diff --git a/tests/unit/image-upload.test.ts b/tests/unit/image-upload.test.ts
+new file mode 100644
+index 0000000..ed907da
+--- /dev/null
++++ b/tests/unit/image-upload.test.ts
+@@ -0,0 +1,74 @@
++import assert from "node:assert/strict";
++import { describe, it } from "node:test";
++
++import { checkImageFile, detectImageType } from "../../src/lib/image-upload.ts";
++import { uploadImageHandler } from "../../src/modules/products/presentation/upload-image-handler.ts";
++import { UnauthorizedError } from "../../src/modules/shared/domain/errors.ts";
++
++const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0];
++const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0];
++const WEBP = [...Buffer.from("RIFF"), 1, 2, 3, 4, ...Buffer.from("WEBP")];
++
++describe("detectImageType", () => {
++  it("reconoce jpeg, png y webp", () => {
++    assert.equal(detectImageType(new Uint8Array(JPEG))?.ext, "jpg");
++    assert.equal(detectImageType(new Uint8Array(PNG))?.ext, "png");
++    assert.equal(detectImageType(new Uint8Array(WEBP))?.ext, "webp");
++  });
++  it("rechaza SVG, HTML y vacío", () => {
++    assert.equal(detectImageType(new TextEncoder().encode("<svg xmlns=...>")), null);
++    assert.equal(detectImageType(new TextEncoder().encode("<html>")), null);
++    assert.equal(detectImageType(new Uint8Array()), null);
++  });
++});
++
++describe("checkImageFile", () => {
++  it("valida tamaño y tipo", () => {
++    assert.equal(checkImageFile({ size: 100, type: "image/png" }), null);
++    assert.ok(checkImageFile({ size: 0, type: "image/png" }));
++    assert.ok(checkImageFile({ size: 6 * 1024 * 1024, type: "image/png" }));
++    assert.ok(checkImageFile({ size: 10, type: "image/svg+xml" }));
++  });
++});
++
++describe("uploadImageHandler", () => {
++  const puts: string[] = [];
++  const storage = { put: async (key: string) => (puts.push(key), `https://b.s3.x.amazonaws.com/${key}`) };
++  const make = (over = {}) => uploadImageHandler({ requireAdmin: async () => ({}), getStorage: () => storage, ...over });
++  const upload = (bytes: number[], name = "a.png") => {
++    const form = new FormData();
++    form.append("file", new File([new Uint8Array(bytes)], name));
++    return new Request("http://x/api/uploads", { method: "POST", body: form });
++  };
++
++  it("sube y devuelve la URL", async () => {
++    const res = await make()(upload(PNG));
++    assert.equal(res.status, 201);
++    const { url } = (await res.json()) as { url: string };
++    assert.match(url, /\/productos\/[0-9a-f-]{36}\.png$/);
++  });
++  it("401 sin sesión", async () => {
++    const res = await make({ requireAdmin: async () => { throw new UnauthorizedError(); } })(upload(PNG));
++    assert.equal(res.status, 401);
++  });
++  it("503 si S3 no está configurado", async () => {
++    assert.equal((await make({ getStorage: () => null })(upload(PNG))).status, 503);
++  });
++  it("400 si el contenido no es imagen aunque se llame .png", async () => {
++    assert.equal((await make()(upload([...Buffer.from("<svg>")], "x.png"))).status, 400);
++  });
++  it("400 si no es multipart", async () => {
++    const res = await make()(new Request("http://x/api/uploads", { method: "POST", body: "{}" }));
++    assert.equal(res.status, 400);
++  });
++  it("413 si supera 5 MB", async () => {
++    const big = new Array(5 * 1024 * 1024 + 1).fill(0);
++    big[0] = 0xff; big[1] = 0xd8; big[2] = 0xff;
++    assert.equal((await make()(upload(big))).status, 413);
++  });
++  it("500 genérico si S3 falla, sin filtrar detalles", async () => {
++    const res = await make({ getStorage: () => ({ put: async () => { throw new Error("secreto"); } }) })(upload(PNG));
++    assert.equal(res.status, 500);
++    assert.ok(!JSON.stringify(await res.json()).includes("secreto"));
++  });
++});

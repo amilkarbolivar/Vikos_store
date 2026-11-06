@@ -1,16 +1,13 @@
+import Image from "next/image";
+
 import { aboutContent } from "@/config/about";
 
 import { Container } from "../ui/container";
-import { GiftIcon } from "../ui/icons";
 import { SectionHeading } from "../ui/section-heading";
 
 /**
- * Bloque "Quiénes somos": título + párrafos a la izquierda y una ilustración a la derecha.
- * Cada párrafo de `aboutContent.story.paragraphs` se dibuja como un <p>: para agregar uno,
- * basta con añadirlo a la lista.
- *
- * La ilustración es un adorno de CSS. Cuando haya una foto real del equipo o de los
- * productos, se reemplaza aquí (ver `ProductImage` para mostrar imágenes con plan B).
+ * Bloque "Quiénes somos": título + párrafos a la izquierda y la fotografía real
+ * de la entrega de regalos en Viko's Store a la derecha, manteniendo su proporción original.
  */
 export function AboutStory() {
   const { eyebrow, title, paragraphs } = aboutContent.story;
@@ -27,11 +24,16 @@ export function AboutStory() {
           </div>
         </div>
 
-        <div
-          aria-hidden="true"
-          className="mx-auto flex aspect-square w-full max-w-sm items-center justify-center rounded-[2.5rem] bg-gradient-to-br from-brand-100 to-brand-50 text-8xl text-brand-600/80 shadow-card"
-        >
-          <GiftIcon />
+        <div className="relative mx-auto w-full overflow-hidden rounded-3xl border border-line bg-white shadow-card transition-shadow duration-200 hover:shadow-card-hover">
+          <Image
+            src="/sobre-nosotros.jpg"
+            alt="Detalles personalizados en Viko's Store"
+            width={1024}
+            height={584}
+            unoptimized
+            priority
+            className="h-auto w-full object-cover"
+          />
         </div>
       </Container>
     </section>

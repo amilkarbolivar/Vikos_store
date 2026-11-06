@@ -13,22 +13,23 @@
  */
 @theme {
   /* Fondo cálido y texto principal (contraste > 14:1). */
-  --color-cream: #fff8f1;
+  --color-cream: #fff6f1;
   --color-ink: #2a1a20;
   /* Texto secundario. Sobre `cream` tiene contraste ≈ 5.9:1 (cumple WCAG AA). */
   --color-muted: #6f5b63;
   /* Bordes y separadores suaves. */
-  --color-line: #f0e0d8;
+  --color-line: #f3e0d6;
 
-  /* Color de marca (rosa). 600 con texto blanco tiene contraste ≈ 5:1 (cumple WCAG AA). */
-  --color-brand-50: #fff1f3;
-  --color-brand-100: #ffe0e6;
-  --color-brand-500: #e8456b;
-  --color-brand-600: #d02a56;
-  --color-brand-700: #ae1f45;
+  /* Color de marca: dorado oro y durazno del logo. 50 y 100 son los duraznos del fondo del logo.
+     600 con texto blanco tiene contraste ≈ 3.9:1: pensado para botones de texto grande y en negrita. */
+  --color-brand-50: #fff3ee;
+  --color-brand-100: #ffe4dd;
+  --color-brand-500: #d4a017;
+  --color-brand-600: #a87a12;
+  --color-brand-700: #8a620c;
 
   /* Acento dorado para detalles. */
-  --color-gold: #f5b942;
+  --color-gold: #e6b422;
 
   /* Verde de WhatsApp oscurecido para que el texto blanco sea legible (≈ 5:1). */
   --color-whatsapp: #15803d;
@@ -67,6 +68,25 @@ body {
 :where(a, button, summary, input, select, textarea):focus-visible {
   outline: 3px solid var(--color-brand-500);
   outline-offset: 2px;
+}
+
+/*
+ * Animación de entrada: sube suavemente desde abajo mientras aparece.
+ * Usada en las tarjetas de AboutValues (y reutilizable en cualquier sección).
+ */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* Quien pidió "reducir movimiento" en su sistema no ve animaciones. */
