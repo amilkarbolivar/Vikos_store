@@ -5,7 +5,7 @@ import { InfrastructureError, PayloadTooLargeError, ValidationError } from '@/mo
 import { errorBody, toErrorResponse, type ErrorLogger } from '@/modules/shared/presentation/http-error-mapper';
 
 export interface UploadImageDeps {
-  requireAdmin: () => Promise<unknown>;
+  requireAdmin: (request: Request) => Promise<unknown>;
   getStorage: () => { put(key: string, body: Uint8Array, contentType: string): Promise<string> } | null;
   logger?: ErrorLogger;
 }
@@ -14,7 +14,7 @@ export interface UploadImageDeps {
 export function uploadImageHandler(deps: UploadImageDeps) {
   return async (request: Request): Promise<Response> => {
     try {
-      await deps.requireAdmin();
+      await deps.requireAdmin(request);
 
       const storage = deps.getStorage();
       if (!storage) {
